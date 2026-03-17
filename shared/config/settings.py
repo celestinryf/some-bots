@@ -48,6 +48,8 @@ class Settings:
                     "pirate_weather_api_key",
                     "openweather_api_key",
                     "nws_user_agent",
+                    "kalshi_api_key_id",
+                    "kalshi_key_path",
                 )
                 if not getattr(self, name)
             ]

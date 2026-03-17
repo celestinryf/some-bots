@@ -78,27 +78,27 @@ def run_kalshi_discovery(
     skip_count = 0
     error_count = 0
 
-    for market in discovered:
-        city = city_map.get(market.city_code)
-        if city is None:
-            skip_count += 1
-            logger.debug(
-                "kalshi_market_unknown_city",
-                ticker=market.market_ticker,
-                city_code=market.city_code,
-                correlation_id=correlation_id,
-            )
-            continue
+    with session_factory() as session:
+        for market in discovered:
+            city = city_map.get(market.city_code)
+            if city is None:
+                skip_count += 1
+                logger.debug(
+                    "kalshi_market_unknown_city",
+                    ticker=market.market_ticker,
+                    city_code=market.city_code,
+                    correlation_id=correlation_id,
+                )
+                continue
 
-        try:
-            forecast_dt = datetime(
-                market.forecast_date.year,
-                market.forecast_date.month,
-                market.forecast_date.day,
-                tzinfo=timezone.utc,
-            )
+            try:
+                forecast_dt = datetime(
+                    market.forecast_date.year,
+                    market.forecast_date.month,
+                    market.forecast_date.day,
+                    tzinfo=timezone.utc,
+                )
 
-            with session_factory() as session:
                 stmt = pg_insert(KalshiMarket).values(
                     event_id=market.event_ticker,
                     market_id=market.market_ticker,
@@ -121,18 +121,18 @@ def run_kalshi_discovery(
                 )
                 session.execute(stmt)
 
-            upsert_count += 1
+                upsert_count += 1
 
-        except Exception as exc:
-            error_count += 1
-            logger.error(
-                "kalshi_discovery_market_error",
-                ticker=market.market_ticker,
-                error=str(exc),
-                error_type=type(exc).__name__,
-                correlation_id=correlation_id,
-                run_id=run_id,
-            )
+            except Exception as exc:
+                error_count += 1
+                logger.error(
+                    "kalshi_discovery_market_error",
+                    ticker=market.market_ticker,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    correlation_id=correlation_id,
+                    run_id=run_id,
+                )
 
     logger.info(
         "kalshi_discovery_complete",
@@ -334,36 +334,36 @@ def run_kalshi_settlements(
     update_count = 0
     error_count = 0
 
-    for settled in settled_markets:
-        try:
-            settlement_val = (
-                float(settled.settlement_value)
-                if settled.settlement_value is not None
-                else None
-            )
+    with session_factory() as session:
+        for settled in settled_markets:
+            try:
+                settlement_val = (
+                    float(settled.settlement_value)
+                    if settled.settlement_value is not None
+                    else None
+                )
 
-            with session_factory() as session:
                 session.execute(
                     update(KalshiMarket)
                     .where(KalshiMarket.ticker == settled.ticker)
                     .values(
-                        status=MarketStatus.SETTLED,
+                        status=settled.final_status,
                         settlement_value=settlement_val,
                     )
                 )
 
-            update_count += 1
+                update_count += 1
 
-        except Exception as exc:
-            error_count += 1
-            logger.error(
-                "kalshi_settlement_update_error",
-                ticker=settled.ticker,
-                error=str(exc),
-                error_type=type(exc).__name__,
-                correlation_id=correlation_id,
-                run_id=run_id,
-            )
+            except Exception as exc:
+                error_count += 1
+                logger.error(
+                    "kalshi_settlement_update_error",
+                    ticker=settled.ticker,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    correlation_id=correlation_id,
+                    run_id=run_id,
+                )
 
     logger.info(
         "kalshi_settlements_complete",

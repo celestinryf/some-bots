@@ -325,6 +325,7 @@ class TestRunKalshiSettlements:
                 ticker=mock_market.ticker,
                 result="yes",
                 settlement_value=Decimal("1.00"),
+                final_status=MarketStatus.SETTLED,
             ),
         ]
 
@@ -374,7 +375,7 @@ class TestRunKalshiSettlements:
 
         # Only TICKER-1 is settled
         mock_kalshi.check_settlements.return_value = [
-            SettledMarket(ticker="TICKER-1", result="yes", settlement_value=Decimal("1.00")),
+            SettledMarket(ticker="TICKER-1", result="yes", settlement_value=Decimal("1.00"), final_status=MarketStatus.SETTLED),
         ]
 
         run_kalshi_settlements(
@@ -387,6 +388,38 @@ class TestRunKalshiSettlements:
         # UPDATE called only for TICKER-1
         # execute called for SELECT (in first session) + UPDATE (in second session)
         assert mock_session.execute.call_count >= 1
+
+    def test_closed_market_updated_with_closed_status(self) -> None:
+        """CLOSED markets should be updated to CLOSED, not left as ACTIVE."""
+        mock_kalshi = MagicMock(spec=KalshiClient)
+        mock_market = _make_mock_kalshi_market()
+        mock_market.forecast_date = datetime(2026, 3, 15, tzinfo=timezone.utc)
+
+        mock_session = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_market]
+        mock_execute = MagicMock()
+        mock_execute.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_execute
+
+        mock_kalshi.check_settlements.return_value = [
+            SettledMarket(
+                ticker=mock_market.ticker,
+                result="",
+                settlement_value=None,
+                final_status=MarketStatus.CLOSED,
+            ),
+        ]
+
+        run_kalshi_settlements(
+            kalshi_client=mock_kalshi,
+            session_factory=_mock_session_factory(mock_session),
+            run_id="test-run-closed",
+        )
+
+        mock_kalshi.check_settlements.assert_called_once()
+        # execute called for SELECT + UPDATE
+        assert mock_session.execute.call_count >= 2
 
     def test_api_error_handled_gracefully(self) -> None:
         mock_kalshi = MagicMock(spec=KalshiClient)

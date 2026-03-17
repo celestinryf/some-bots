@@ -613,6 +613,22 @@ class TestCheckSettlements:
         assert s.ticker == "KXHIGHNYC-26MAR16-T62"
         assert s.result == "yes"
         assert s.settlement_value == Decimal("1.00")
+        assert s.final_status == MarketStatus.SETTLED
+
+    def test_returns_closed_market(self) -> None:
+        client, mock = _make_kalshi_client()
+        market = _make_mock_market(
+            status=KalshiMarketStatus.CLOSED,
+            result=None,
+        )
+        mock.get_markets.return_value = [market]
+
+        result = client.check_settlements(["KXHIGHNYC-26MAR16-T62"])
+
+        assert len(result) == 1
+        s = result[0]
+        assert s.final_status == MarketStatus.CLOSED
+        assert s.result == ""
 
     def test_ignores_active_markets(self) -> None:
         client, mock = _make_kalshi_client()

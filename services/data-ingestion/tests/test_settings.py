@@ -50,6 +50,8 @@ class TestIsProduction:
             pirate_weather_api_key="pw-key",
             openweather_api_key="owm-key",
             nws_user_agent="(test, test@test.com)",
+            kalshi_api_key_id="kalshi-key-id",
+            kalshi_key_path="./secrets/kalshi.pem",
         )
         assert s.is_production is True
 
@@ -182,6 +184,8 @@ class TestProductionValidation:
             pirate_weather_api_key="pw-key",
             openweather_api_key="owm-key",
             nws_user_agent="(test, test@test.com)",
+            kalshi_api_key_id="kalshi-key-id",
+            kalshi_key_path="./secrets/kalshi.pem",
         )
         assert s.is_production is True
 
@@ -197,6 +201,20 @@ class TestProductionValidation:
                 visual_crossing_api_key="vc-key",
                 pirate_weather_api_key="pw-key",
                 nws_user_agent="(test, test@test.com)",
+                kalshi_api_key_id="kalshi-key-id",
+                kalshi_key_path="./secrets/kalshi.pem",
             )
         # Should NOT list the ones that were provided
         assert "db_password" not in str(exc_info.value)
+
+    def test_production_missing_kalshi_credentials_raises(self) -> None:
+        with pytest.raises(ValueError, match="kalshi_api_key_id") as exc_info:
+            Settings(
+                environment="production",
+                db_password="secret",
+                visual_crossing_api_key="vc-key",
+                pirate_weather_api_key="pw-key",
+                openweather_api_key="owm-key",
+                nws_user_agent="(test, test@test.com)",
+            )
+        assert "kalshi_key_path" in str(exc_info.value)

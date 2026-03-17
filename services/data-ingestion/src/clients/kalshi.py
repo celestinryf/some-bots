@@ -87,11 +87,12 @@ class MarketSnapshot:
 
 @dataclass(frozen=True)
 class SettledMarket:
-    """Settlement info for a resolved market."""
+    """Settlement info for a resolved or closed market."""
 
     ticker: str
-    result: str  # "yes" or "no"
+    result: str  # "yes", "no", or "" for closed without result
     settlement_value: Decimal | None
+    final_status: MarketStatus  # SETTLED or CLOSED
 
 
 # ---------------------------------------------------------------------------
@@ -509,19 +510,23 @@ class KalshiClient:
         *,
         correlation_id: str | None = None,
     ) -> list[SettledMarket]:
-        """Check which of the given tickers have been settled.
+        """Check which of the given tickers have been settled or closed.
+
+        Returns markets whose Kalshi status is SETTLED (with result) or
+        CLOSED (without result). This prevents CLOSED markets from
+        accumulating as zombie ACTIVE rows in the database.
 
         Args:
             tickers: Market tickers to check.
             correlation_id: For log tracing.
 
         Returns:
-            List of SettledMarket for resolved tickers.
+            List of SettledMarket for resolved or closed tickers.
 
         Raises:
             KalshiApiError: On API communication failures.
         """
-        settled: list[SettledMarket] = []
+        resolved: list[SettledMarket] = []
 
         for i in range(0, len(tickers), _BATCH_SIZE):
             batch = tickers[i : i + _BATCH_SIZE]
@@ -536,19 +541,29 @@ class KalshiClient:
             for market in markets:
                 status = map_kalshi_status(market.status)
                 if status == MarketStatus.SETTLED and market.result:
-                    settled.append(SettledMarket(
+                    resolved.append(SettledMarket(
                         ticker=market.ticker,
                         result=market.result,
                         settlement_value=_to_decimal(
                             market.settlement_value_dollars
                         ),
+                        final_status=MarketStatus.SETTLED,
+                    ))
+                elif status == MarketStatus.CLOSED:
+                    resolved.append(SettledMarket(
+                        ticker=market.ticker,
+                        result=market.result or "",
+                        settlement_value=_to_decimal(
+                            market.settlement_value_dollars
+                        ),
+                        final_status=MarketStatus.CLOSED,
                     ))
 
         logger.info(
             "kalshi_settlements_checked",
             tickers_checked=len(tickers),
-            settled_count=len(settled),
+            settled_count=len(resolved),
             correlation_id=correlation_id,
         )
 
-        return settled
+        return resolved

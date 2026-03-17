@@ -165,6 +165,7 @@ class KalshiMarketSnapshot(Base):
     yes_ask: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     no_bid: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     no_ask: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    last_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
     open_interest: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

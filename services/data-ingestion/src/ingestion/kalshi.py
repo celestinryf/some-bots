@@ -176,7 +176,13 @@ def run_kalshi_snapshots(
     window_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     window_end = window_start + timedelta(days=2)
 
-    # Query active markets in the window
+    # Query active markets in the window.
+    # NOTE: This session closes before the Kalshi API call, and a second
+    # session opens for inserts. A market could be settled between the two
+    # sessions, causing a snapshot for a now-SETTLED market. This is an
+    # accepted trade-off: snapshot cleanup will purge stale rows, and using
+    # a single long-lived session would hold a DB connection idle during the
+    # external API call.
     with session_factory() as session:
         active_markets = (
             session.execute(
@@ -249,6 +255,7 @@ def run_kalshi_snapshots(
                     yes_ask=snapshot.yes_ask,
                     no_bid=snapshot.no_bid,
                     no_ask=snapshot.no_ask,
+                    last_price=snapshot.last_price,
                     volume=snapshot.volume,
                     open_interest=snapshot.open_interest,
                 )

@@ -34,10 +34,15 @@ class VisualCrossingClient(WeatherClient):
 
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:
         date_str = forecast_date.strftime("%Y-%m-%d")
-        return (
-            f"{_BASE_URL}/{lat},{lon}/{date_str}"
-            f"?key={self._api_key}&unitGroup=us&include=days&elements=datetime,tempmax,tempmin"
-        )
+        return f"{_BASE_URL}/{lat},{lon}/{date_str}"
+
+    def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str]:
+        return {
+            "key": self._api_key,
+            "unitGroup": "us",
+            "include": "days",
+            "elements": "datetime,tempmax,tempmin",
+        }
 
     def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
         """Parse Visual Crossing timeline response.

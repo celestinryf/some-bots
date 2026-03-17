@@ -33,7 +33,13 @@ class PirateWeatherClient(WeatherClient):
         return {}
 
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:
-        return f"{_BASE_URL}/{self._api_key}/{lat},{lon}?units=us&exclude=minutely,hourly,alerts"
+        return f"{_BASE_URL}/{self._api_key}/{lat},{lon}"
+
+    def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str]:
+        return {
+            "units": "us",
+            "exclude": "minutely,hourly,alerts",
+        }
 
     def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
         """Parse PirateWeather forecast response.

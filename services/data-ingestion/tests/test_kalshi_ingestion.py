@@ -21,6 +21,7 @@ from src.clients.kalshi import SettledMarket
 from src.ingestion.kalshi import (
     run_kalshi_discovery,
     run_kalshi_settlements,
+    run_kalshi_snapshot_cleanup,
     run_kalshi_snapshots,
 )
 
@@ -441,4 +442,49 @@ class TestRunKalshiSettlements:
             kalshi_client=mock_kalshi,
             session_factory=_mock_session_factory(mock_session),
             run_id="test-run-4",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Snapshot retention cleanup tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunKalshiSnapshotCleanup:
+    def test_deletes_old_snapshots(self) -> None:
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 42
+        mock_session.execute.return_value = mock_result
+
+        run_kalshi_snapshot_cleanup(
+            session_factory=_mock_session_factory(mock_session),
+            retention_days=30,
+            run_id="test-cleanup-1",
+        )
+
+        mock_session.execute.assert_called_once()
+
+    def test_custom_retention_days(self) -> None:
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 0
+        mock_session.execute.return_value = mock_result
+
+        run_kalshi_snapshot_cleanup(
+            session_factory=_mock_session_factory(mock_session),
+            retention_days=7,
+            run_id="test-cleanup-2",
+        )
+
+        mock_session.execute.assert_called_once()
+
+    def test_db_error_handled_gracefully(self) -> None:
+        mock_session = MagicMock()
+        mock_session.execute.side_effect = RuntimeError("DB error")
+
+        # Should not raise
+        run_kalshi_snapshot_cleanup(
+            session_factory=_mock_session_factory(mock_session),
+            run_id="test-cleanup-3",
         )

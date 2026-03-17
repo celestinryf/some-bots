@@ -123,8 +123,9 @@ class WeatherClient(ABC):
         """
         url = self._build_url(city_code, lat, lon, forecast_date)
         headers = self._get_headers()
+        params = self._get_params(city_code, lat, lon, forecast_date)
 
-        response = self._request_with_retry(url, headers, city_code, correlation_id)
+        response = self._request_with_retry(url, headers, city_code, correlation_id, params=params)
 
         try:
             data = response.json()
@@ -165,6 +166,8 @@ class WeatherClient(ABC):
         headers: dict[str, str],
         city_code: str,
         correlation_id: str | None,
+        *,
+        params: dict[str, str] | None = None,
     ) -> httpx.Response:
         """Execute HTTP GET with exponential backoff on retryable errors.
 
@@ -175,7 +178,7 @@ class WeatherClient(ABC):
 
         for attempt in range(self.max_retries + 1):
             try:
-                response = self._client.get(url, headers=headers)
+                response = self._client.get(url, headers=headers, params=params)
 
                 if response.status_code == 200:
                     return response
@@ -253,11 +256,23 @@ class WeatherClient(ABC):
 
     @abstractmethod
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:
-        """Build the API request URL for a city and date."""
+        """Build the API request URL for a city and date.
+
+        Do NOT embed API keys or secrets in the URL. Use _get_params() instead
+        so credentials are passed via httpx's params= and never appear in log lines.
+        """
 
     @abstractmethod
     def _get_headers(self) -> dict[str, str]:
         """Return HTTP headers for the request (API keys, User-Agent, etc.)."""
+
+    def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str] | None:
+        """Return query parameters for the request.
+
+        API keys should be passed here rather than embedded in _build_url()
+        so they never appear in logged URL strings. Default returns None.
+        """
+        return None
 
     @abstractmethod
     def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:

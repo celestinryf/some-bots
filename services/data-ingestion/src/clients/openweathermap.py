@@ -33,7 +33,15 @@ class OpenWeatherMapClient(WeatherClient):
         return {}
 
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:
-        return f"{_BASE_URL}?lat={lat}&lon={lon}&appid={self._api_key}&units=imperial"
+        return _BASE_URL
+
+    def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str]:
+        return {
+            "lat": str(lat),
+            "lon": str(lon),
+            "appid": self._api_key,
+            "units": "imperial",
+        }
 
     def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
         """Parse OWM 5-day/3-hour response.

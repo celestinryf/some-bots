@@ -29,7 +29,12 @@ from shared.db.session import get_session
 from src.clients.base import WeatherClient
 from src.clients.kalshi import KalshiClient
 from src.ingestion.factories import close_clients, create_kalshi_client, create_weather_clients
-from src.ingestion.kalshi import run_kalshi_discovery, run_kalshi_settlements, run_kalshi_snapshots
+from src.ingestion.kalshi import (
+    run_kalshi_discovery,
+    run_kalshi_settlements,
+    run_kalshi_snapshot_cleanup,
+    run_kalshi_snapshots,
+)
 from src.ingestion.weather import run_weather_ingestion
 
 logger = get_logger("data-ingestion")
@@ -115,6 +120,14 @@ def _kalshi_settlements_wrapper(*, kalshi_client: KalshiClient) -> None:
     )
 
 
+def _kalshi_snapshot_cleanup_wrapper() -> None:
+    run_id = generate_correlation_id()
+    run_kalshi_snapshot_cleanup(
+        session_factory=get_session,
+        run_id=run_id,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Run modes
 # ---------------------------------------------------------------------------
@@ -161,6 +174,12 @@ def _run_once(
             session_factory=get_session,
             run_id=run_id,
         )
+
+    # Snapshot retention cleanup (runs regardless of Kalshi client)
+    run_kalshi_snapshot_cleanup(
+        session_factory=get_session,
+        run_id=run_id,
+    )
 
     logger.info("run_once_complete", run_id=run_id)
 
@@ -222,6 +241,17 @@ def _run_scheduled(
             max_instances=1,
             next_run_time=now + timedelta(seconds=15),
         )
+
+    # Snapshot retention cleanup — daily, independent of Kalshi client
+    scheduler.add_job(  # type: ignore[reportUnknownMemberType]
+        _kalshi_snapshot_cleanup_wrapper,
+        "interval",
+        hours=24,
+        id="kalshi_snapshot_cleanup",
+        name="Kalshi snapshot retention cleanup",
+        max_instances=1,
+        next_run_time=now + timedelta(minutes=5),
+    )
 
     scheduler.start()  # type: ignore[reportUnknownMemberType]
     job_count = len(scheduler.get_jobs())  # type: ignore[reportUnknownMemberType]

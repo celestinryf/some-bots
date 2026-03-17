@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "forecast": "https://api.weather.gov/gridpoints/OKX/33,37/forecast",
+    "forecastHourly": "https://api.weather.gov/gridpoints/OKX/33,37/forecast/hourly",
+    "forecastGridData": "https://api.weather.gov/gridpoints/OKX/33,37",
+    "observationStations": "https://api.weather.gov/gridpoints/OKX/33,37/stations"
+  }
+}

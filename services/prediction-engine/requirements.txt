@@ -1,0 +1,17 @@
+# ML / Statistics
+scikit-learn>=1.4.0,<2.0
+scipy>=1.12.0,<2.0
+numpy>=1.26.0,<3.0
+
+# Database
+sqlalchemy>=2.0.0,<3.0
+psycopg2-binary>=2.9.0,<3.0
+
+# ML tracking
+mlflow>=2.10.0,<3.0
+
+# Logging
+structlog>=24.0.0,<26.0
+
+# Env
+python-dotenv>=1.0.0,<2.0

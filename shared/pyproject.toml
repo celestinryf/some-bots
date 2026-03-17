@@ -1,0 +1,12 @@
+[project]
+name = "kalshi-weather-shared"
+version = "0.1.0"
+description = "Shared configuration for Kalshi weather bot services"
+requires-python = ">=3.12"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["config*"]

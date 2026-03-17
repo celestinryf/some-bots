@@ -1,0 +1,31 @@
+{
+  "latitude": 40.7128,
+  "longitude": -74.006,
+  "timezone": "America/New_York",
+  "currently": {
+    "time": 1742140800,
+    "summary": "Partly Cloudy",
+    "temperature": 65.3
+  },
+  "daily": {
+    "summary": "Partly cloudy throughout the week.",
+    "data": [
+      {
+        "time": 1742108400,
+        "summary": "Partly Cloudy",
+        "temperatureHigh": 71.5,
+        "temperatureLow": 53.2,
+        "temperatureHighTime": 1742151600,
+        "temperatureLowTime": 1742194800
+      },
+      {
+        "time": 1742194800,
+        "summary": "Sunny",
+        "temperatureHigh": 68.9,
+        "temperatureLow": 51.0,
+        "temperatureHighTime": 1742238000,
+        "temperatureLowTime": 1742281200
+      }
+    ]
+  }
+}

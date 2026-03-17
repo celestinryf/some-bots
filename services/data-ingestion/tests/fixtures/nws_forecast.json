@@ -1,0 +1,47 @@
+{
+  "properties": {
+    "updateTime": "2026-03-16T14:30:00+00:00",
+    "periods": [
+      {
+        "number": 1,
+        "name": "Today",
+        "startTime": "2026-03-16T08:00:00-05:00",
+        "endTime": "2026-03-16T18:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 72,
+        "temperatureUnit": "F",
+        "shortForecast": "Partly Sunny"
+      },
+      {
+        "number": 2,
+        "name": "Tonight",
+        "startTime": "2026-03-16T18:00:00-05:00",
+        "endTime": "2026-03-17T06:00:00-05:00",
+        "isDaytime": false,
+        "temperature": 55,
+        "temperatureUnit": "F",
+        "shortForecast": "Mostly Clear"
+      },
+      {
+        "number": 3,
+        "name": "Tuesday",
+        "startTime": "2026-03-17T06:00:00-05:00",
+        "endTime": "2026-03-17T18:00:00-05:00",
+        "isDaytime": true,
+        "temperature": 68,
+        "temperatureUnit": "F",
+        "shortForecast": "Sunny"
+      },
+      {
+        "number": 4,
+        "name": "Tuesday Night",
+        "startTime": "2026-03-17T18:00:00-05:00",
+        "endTime": "2026-03-18T06:00:00-05:00",
+        "isDaytime": false,
+        "temperature": 52,
+        "temperatureUnit": "F",
+        "shortForecast": "Clear"
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "include": ["shared", "services", "conftest.py"],
+  "exclude": ["**/node_modules", "**/__pycache__", ".venv", "**/db-migrations"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "strict",
+  "reportPrivateUsage": "none"
+}

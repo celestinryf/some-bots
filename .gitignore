@@ -1,0 +1,58 @@
+# Secrets - NEVER commit
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Java / Spring Boot
+*.class
+*.jar
+*.war
+target/
+.gradle/
+build/
+
+# Node / React
+node_modules/
+.next/
+coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Logs
+*.log
+logs/

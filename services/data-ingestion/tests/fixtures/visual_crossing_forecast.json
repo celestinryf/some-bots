@@ -1,0 +1,16 @@
+{
+  "queryCost": 1,
+  "latitude": 40.7128,
+  "longitude": -74.006,
+  "resolvedAddress": "New York, NY, United States",
+  "address": "40.7128,-74.006",
+  "timezone": "America/New_York",
+  "tzoffset": -5.0,
+  "days": [
+    {
+      "datetime": "2026-03-16",
+      "tempmax": 73.2,
+      "tempmin": 54.8
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+# HTTP client
+httpx>=0.27.0,<1.0
+
+# Scheduling
+apscheduler>=3.10.0,<4.0
+
+# Database
+sqlalchemy>=2.0.0,<3.0
+psycopg2-binary>=2.9.0,<3.0
+alembic>=1.13.0,<2.0
+
+# Kalshi
+pykalshi>=0.4.0,<1.0
+
+# Logging
+structlog>=24.0.0,<26.0
+
+# Env
+python-dotenv>=1.0.0,<2.0

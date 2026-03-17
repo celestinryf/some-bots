@@ -231,12 +231,19 @@ def _run_scheduled(
     weather_clients: list[WeatherClient],
     kalshi_client: KalshiClient | None,
     city_map: dict[str, City],
+    shutdown_event: threading.Event,
 ) -> None:
-    """Start APScheduler with interval triggers. Blocks until SIGINT/SIGTERM."""
+    """Start APScheduler with interval triggers. Blocks until SIGINT/SIGTERM.
+
+    Args:
+        shutdown_event: Event that is set by the signal handler registered
+            in main() *before* this function is called, so SIGTERM/SIGINT
+            during the cold-start phase triggers a graceful exit.
+    """
 
     # Cold-start backfill: discover all open markets (today + tomorrow)
     # so today's already-active markets aren't missed on fresh deployment.
-    if kalshi_client is not None:
+    if kalshi_client is not None and not shutdown_event.is_set():
         startup_run_id = generate_correlation_id()
         logger.info("cold_start_discovery", run_id=startup_run_id)
         run_kalshi_discovery(
@@ -246,6 +253,10 @@ def _run_scheduled(
             forecast_date=None,
             run_id=startup_run_id,
         )
+
+    if shutdown_event.is_set():
+        logger.info("shutdown_before_scheduler_start")
+        return
 
     scheduler = BackgroundScheduler(timezone="UTC")  # type: ignore[reportUnknownMemberType]
     now = datetime.now(timezone.utc)
@@ -321,16 +332,6 @@ def _run_scheduled(
     job_count = len(scheduler.get_jobs())  # type: ignore[reportUnknownMemberType]
     logger.info("scheduler_started", jobs=job_count)
 
-    # Block until SIGINT/SIGTERM
-    shutdown_event = threading.Event()
-
-    def _signal_handler(signum: int, frame: FrameType | None) -> None:
-        logger.info("shutdown_signal_received", signal=signum)
-        shutdown_event.set()
-
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
-
     shutdown_event.wait()
     scheduler.shutdown(wait=True)  # type: ignore[reportUnknownMemberType]
     logger.info("scheduler_stopped")
@@ -380,11 +381,23 @@ def main() -> None:
         )
         sys.exit(1)
 
+    # Register signal handlers early so SIGTERM/SIGINT during cold-start
+    # discovery (or any startup phase) triggers a graceful exit instead
+    # of Python's default immediate termination.
+    shutdown_event = threading.Event()
+
+    def _signal_handler(signum: int, frame: FrameType | None) -> None:
+        logger.info("shutdown_signal_received", signal=signum)
+        shutdown_event.set()
+
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+
     try:
         if args.run_once:
             _run_once(weather_clients, kalshi_client, city_map)
         else:
-            _run_scheduled(weather_clients, kalshi_client, city_map)
+            _run_scheduled(weather_clients, kalshi_client, city_map, shutdown_event)
     finally:
         close_clients(weather_clients, kalshi_client)
         logger.info("service_stopped")

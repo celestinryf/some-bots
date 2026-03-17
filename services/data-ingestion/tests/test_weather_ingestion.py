@@ -161,8 +161,8 @@ class TestRunWeatherIngestion:
         assert mock_client.fetch_forecast.call_count == 2
         mock_session.execute.assert_not_called()
 
-    def test_dedup_conflict_counted_as_skip(self) -> None:
-        """ON CONFLICT DO NOTHING -> rowcount=0 -> counted as skip."""
+    def test_upsert_on_conflict_updates_existing(self) -> None:
+        """ON CONFLICT DO UPDATE: re-fetching same (source, city, date) updates the row."""
         mock_client = MagicMock()
         mock_client.source = WeatherSource.NWS
         mock_client.inter_request_delay = 0.0
@@ -170,7 +170,7 @@ class TestRunWeatherIngestion:
 
         mock_session = MagicMock()
         mock_result = MagicMock()
-        mock_result.rowcount = 0  # Conflict — row already exists
+        mock_result.rowcount = 1  # Updated existing row
         mock_session.execute.return_value = mock_result
 
         run_weather_ingestion(
@@ -182,7 +182,7 @@ class TestRunWeatherIngestion:
             sleep_fn=_noop_sleep,
         )
 
-        # Should still call execute (the ON CONFLICT handles dedup)
+        # Upsert should execute and count as success
         mock_session.execute.assert_called_once()
 
     def test_inter_request_delay_respected(self) -> None:

@@ -95,9 +95,9 @@ class City(Base):
 class WeatherForecast(Base):
     __tablename__ = "weather_forecasts"
     __table_args__ = (
-        Index("ix_forecasts_city_date_source", "city_id", "forecast_date", "source", "issued_at"),
+        Index("ix_forecasts_city_date_source", "city_id", "forecast_date", "source"),
         Index("ix_forecasts_source", "source"),
-        UniqueConstraint("source", "city_id", "forecast_date", "issued_at", name="uq_forecast_dedup"),
+        UniqueConstraint("source", "city_id", "forecast_date", name="uq_forecast_dedup"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_new_uuid)
@@ -142,7 +142,7 @@ class KalshiMarket(Base):
         default=MarketStatus.ACTIVE,
         nullable=False,
     )
-    settlement_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    settlement_value: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
 

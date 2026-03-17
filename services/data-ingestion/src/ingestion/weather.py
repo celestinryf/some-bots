@@ -2,7 +2,7 @@
 Weather forecast ingestion job.
 
 Fetches forecasts from a single weather source for all configured cities,
-storing results in PostgreSQL with deduplication via ON CONFLICT DO NOTHING.
+storing results in PostgreSQL with upsert via ON CONFLICT DO UPDATE.
 
 Each call processes one source (NWS, VC, PW, or OWM). APScheduler runs
 one job per source concurrently (Decision #13).
@@ -37,8 +37,10 @@ def run_weather_ingestion(
     """Ingest weather forecasts from one source for all cities.
 
     Per-city errors are caught and logged — one city's failure never
-    kills the run. Results are deduplicated via INSERT ON CONFLICT DO NOTHING
-    on the ``uq_forecast_dedup`` constraint.
+    kills the run. Uniqueness is enforced by the ``uq_forecast_dedup``
+    constraint on (source, city_id, forecast_date). On conflict the
+    existing row is updated with the latest issued_at, temps, and raw
+    response so re-runs always store the freshest data.
 
     Args:
         client: Weather API client for one source.
@@ -89,21 +91,18 @@ def run_weather_ingestion(
                         temp_high=result.temp_high,
                         temp_low=result.temp_low,
                         raw_response=result.raw_response,
-                    ).on_conflict_do_nothing(
+                    ).on_conflict_do_update(
                         constraint="uq_forecast_dedup",
+                        set_={
+                            "issued_at": result.issued_at,
+                            "temp_high": result.temp_high,
+                            "temp_low": result.temp_low,
+                            "raw_response": result.raw_response,
+                        },
                     )
-                    db_result: CursorResult[tuple[()]] = session.execute(stmt)  # type: ignore[assignment]
+                    session.execute(stmt)
 
-                if db_result.rowcount == 0:
-                    skip_count += 1
-                    logger.debug(
-                        "forecast_dedup_skipped",
-                        source=source,
-                        city=ticker_code,
-                        correlation_id=correlation_id,
-                    )
-                else:
-                    success_count += 1
+                success_count += 1
 
             except Exception as exc:
                 error_count += 1

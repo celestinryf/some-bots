@@ -5,6 +5,9 @@
 secrets/
 *.pem
 
+# Claude Code (developer-local settings with possible credentials)
+.claude/
+
 # Python
 __pycache__/
 *.py[cod]

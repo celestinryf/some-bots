@@ -400,8 +400,8 @@ class TestVisualCrossingClient:
 # PirateWeather Client Tests
 # ===========================================================================
 
-_PW_URL = "https://api.pirateweather.net/forecast/test-pw-key/40.7,-74.0"
-_PW_PARAMS: dict[str, str] = {"units": "us", "exclude": "minutely,hourly,alerts"}
+_PW_URL = "https://api.pirateweather.net/forecast/40.7,-74.0"
+_PW_PARAMS: dict[str, str] = {"units": "us", "exclude": "minutely,hourly,alerts", "apikey": "test-pw-key"}
 
 
 class TestPirateWeatherClient:
@@ -494,15 +494,18 @@ class TestPirateWeatherClient:
             client.fetch_forecast("NYC", 40.7, -74.0, far_future)
 
     @respx.mock
-    def test_api_key_in_url_path(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
-        """PirateWeather API key is in the URL path (Dark Sky-compatible design)."""
+    def test_api_key_passed_as_param(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
+        """API key is passed via query params, not embedded in the URL path."""
         fixture = _load_fixture("pirate_weather_forecast.json")
         route = respx.get(_PW_URL, params=_PW_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
         client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
-        assert "test-pw-key" in str(route.calls[0].request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        request_url = str(route.calls[0].request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        # Key must be in query params, NOT in the URL path
+        assert "apikey=test-pw-key" in request_url
+        assert "/test-pw-key/" not in request_url
 
 
 # ===========================================================================

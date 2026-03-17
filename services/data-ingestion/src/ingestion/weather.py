@@ -63,33 +63,36 @@ def run_weather_ingestion(
     skip_count = 0
     error_count = 0
 
-    for idx, (ticker_code, city) in enumerate(city_map.items()):
-        # Inter-request delay between cities (e.g., NWS requires ~1s)
-        if idx > 0 and client.inter_request_delay > 0:
-            sleep_fn(client.inter_request_delay)
+    with session_factory() as session:
+        for idx, (ticker_code, city) in enumerate(city_map.items()):
+            # Inter-request delay between cities (e.g., NWS requires ~1s)
+            if idx > 0 and client.inter_request_delay > 0:
+                sleep_fn(client.inter_request_delay)
 
-        try:
-            result = client.fetch_forecast(
-                city_code=ticker_code,
-                lat=city.lat,
-                lon=city.lon,
-                forecast_date=forecast_date,
-                correlation_id=correlation_id,
-            )
-
-            with session_factory() as session:
-                stmt = pg_insert(WeatherForecast).values(
-                    source=str(result.source),
-                    city_id=city.id,
-                    forecast_date=result.forecast_date,
-                    issued_at=result.issued_at,
-                    temp_high=result.temp_high,
-                    temp_low=result.temp_low,
-                    raw_response=result.raw_response,
-                ).on_conflict_do_nothing(
-                    constraint="uq_forecast_dedup",
+            try:
+                result = client.fetch_forecast(
+                    city_code=ticker_code,
+                    lat=city.lat,
+                    lon=city.lon,
+                    forecast_date=forecast_date,
+                    correlation_id=correlation_id,
                 )
-                db_result: CursorResult[tuple[()]] = session.execute(stmt)  # type: ignore[assignment]
+
+                # SAVEPOINT per city so a single failure doesn't poison
+                # the session and roll back the entire batch.
+                with session.begin_nested():
+                    stmt = pg_insert(WeatherForecast).values(
+                        source=str(result.source),
+                        city_id=city.id,
+                        forecast_date=result.forecast_date,
+                        issued_at=result.issued_at,
+                        temp_high=result.temp_high,
+                        temp_low=result.temp_low,
+                        raw_response=result.raw_response,
+                    ).on_conflict_do_nothing(
+                        constraint="uq_forecast_dedup",
+                    )
+                    db_result: CursorResult[tuple[()]] = session.execute(stmt)  # type: ignore[assignment]
 
                 if db_result.rowcount == 0:
                     skip_count += 1
@@ -102,17 +105,17 @@ def run_weather_ingestion(
                 else:
                     success_count += 1
 
-        except Exception as exc:
-            error_count += 1
-            logger.error(
-                "weather_ingestion_city_error",
-                source=source,
-                city=ticker_code,
-                error=str(exc),
-                error_type=type(exc).__name__,
-                correlation_id=correlation_id,
-                run_id=run_id,
-            )
+            except Exception as exc:
+                error_count += 1
+                logger.error(
+                    "weather_ingestion_city_error",
+                    source=source,
+                    city=ticker_code,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    correlation_id=correlation_id,
+                    run_id=run_id,
+                )
 
     logger.info(
         "weather_ingestion_complete",

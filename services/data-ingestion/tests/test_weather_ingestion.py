@@ -54,7 +54,15 @@ def _make_forecast_result(
 def _mock_session_factory(
     mock_session: MagicMock,
 ) -> Callable[[], AbstractContextManager[MagicMock]]:
-    """Create a session factory that yields the given mock session."""
+    """Create a session factory that yields the given mock session.
+
+    Configures begin_nested() to return a context manager (SAVEPOINT mock)
+    matching the single-session + savepoint pattern used in weather ingestion.
+    """
+    # Make begin_nested() usable as a context manager (SAVEPOINT)
+    mock_session.begin_nested.return_value.__enter__ = MagicMock(return_value=None)
+    mock_session.begin_nested.return_value.__exit__ = MagicMock(return_value=False)
+
     @contextmanager
     def factory() -> Generator[MagicMock, None, None]:
         yield mock_session

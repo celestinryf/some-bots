@@ -118,6 +118,8 @@ class OpenWeatherMapClient(WeatherClient):
         return ParsedForecast(
             temp_high=temp_high,
             temp_low=temp_low,
+            # OWM does not expose a model-run timestamp; use fetch time as
+            # a best-effort proxy.  NWS and PirateWeather provide real issuance times.
             issued_at=datetime.now(timezone.utc),
             raw_response=trimmed_response,
         )

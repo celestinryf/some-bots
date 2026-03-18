@@ -81,5 +81,8 @@ class VisualCrossingClient(WeatherClient):
         return ParsedForecast(
             temp_high=self._to_optional_float(day.get("tempmax")),
             temp_low=self._to_optional_float(day.get("tempmin")),
+            # Visual Crossing does not expose a model-run timestamp; use fetch
+            # time as a best-effort proxy.  NWS and PirateWeather provide real
+            # issuance times.
             issued_at=datetime.now(timezone.utc),
         )

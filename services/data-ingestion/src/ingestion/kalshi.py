@@ -384,7 +384,11 @@ def run_kalshi_settlements(
                     # linger until the 30-day retention cleanup.
                     session.execute(
                         delete(KalshiMarketSnapshot).where(
-                            KalshiMarketSnapshot.ticker == settled.ticker,
+                            KalshiMarketSnapshot.market_id.in_(
+                                select(KalshiMarket.id).where(
+                                    KalshiMarket.ticker == settled.ticker,
+                                )
+                            )
                         )
                     )
 

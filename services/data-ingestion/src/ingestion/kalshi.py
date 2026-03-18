@@ -116,6 +116,8 @@ def run_kalshi_discovery(
                     ).on_conflict_do_update(
                         index_elements=["ticker"],
                         set_={
+                            "event_id": market.event_ticker,
+                            "market_id": market.market_ticker,
                             "status": market.status,
                             "bracket_low": market.bracket_low,
                             "bracket_high": market.bracket_high,
@@ -454,7 +456,7 @@ def run_kalshi_snapshot_cleanup(
                         KalshiMarketSnapshot.id.in_(select(batch_ids))
                     )
                 )
-                batch_deleted = result.rowcount  # type: ignore[union-attr]
+                batch_deleted = result.rowcount or 0  # type: ignore[union-attr]
                 deleted_count += batch_deleted
 
             if batch_deleted < batch_size:

@@ -472,6 +472,13 @@ class KalshiClient:
             batch = tickers[i : i + _BATCH_SIZE]
             try:
                 markets = _fetch_markets(self._client, tickers=batch)
+            except ResourceNotFoundError:
+                logger.warning(
+                    "kalshi_snapshot_batch_not_found",
+                    batch=batch,
+                    correlation_id=correlation_id,
+                )
+                continue
             except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
                 raise KalshiApiError(
                     f"Failed to fetch market snapshots: {exc}",
@@ -532,6 +539,13 @@ class KalshiClient:
             batch = tickers[i : i + _BATCH_SIZE]
             try:
                 markets = _fetch_markets(self._client, tickers=batch)
+            except ResourceNotFoundError:
+                logger.warning(
+                    "kalshi_settlement_batch_not_found",
+                    batch=batch,
+                    correlation_id=correlation_id,
+                )
+                continue
             except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
                 raise KalshiApiError(
                     f"Failed to check settlements: {exc}",

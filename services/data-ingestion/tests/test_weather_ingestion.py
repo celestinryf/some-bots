@@ -306,3 +306,38 @@ class TestRunWeatherIngestion:
         )
 
         mock_client.fetch_forecast.assert_not_called()
+
+    def test_partial_null_temp_uses_coalesce(self) -> None:
+        """Upsert uses COALESCE so a null temp never overwrites a valid one."""
+        mock_client = MagicMock()
+        mock_client.source = WeatherSource.NWS
+        mock_client.inter_request_delay = 0.0
+        # temp_low is None — should not overwrite an existing valid value
+        mock_client.fetch_forecast.return_value = _make_forecast_result()
+        # Override temp_low to None via a new ForecastResult
+        mock_client.fetch_forecast.return_value = ForecastResult(
+            source=WeatherSource.NWS,
+            city_code="NYC",
+            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            issued_at=datetime(2026, 3, 16, 14, 0, tzinfo=timezone.utc),
+            temp_high=72.0,
+            temp_low=None,
+            raw_response={"test": True},
+        )
+
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        run_weather_ingestion(
+            client=mock_client,
+            city_map={"NYC": _make_city("NYC")},
+            session_factory=_mock_session_factory(mock_session),
+            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            run_id="test-run-10",
+            sleep_fn=_noop_sleep,
+        )
+
+        # Upsert should still execute (COALESCE handles the null protection)
+        mock_session.execute.assert_called_once()

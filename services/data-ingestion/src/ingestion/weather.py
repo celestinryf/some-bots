@@ -13,6 +13,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -93,8 +94,13 @@ def run_weather_ingestion(
                         constraint="uq_forecast_dedup",
                         set_={
                             "issued_at": result.issued_at,
-                            "temp_high": result.temp_high,
-                            "temp_low": result.temp_low,
+                            # COALESCE: never overwrite a valid temp with NULL
+                            "temp_high": func.coalesce(
+                                result.temp_high, WeatherForecast.temp_high
+                            ),
+                            "temp_low": func.coalesce(
+                                result.temp_low, WeatherForecast.temp_low
+                            ),
                             "raw_response": result.raw_response,
                         },
                     )

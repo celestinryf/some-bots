@@ -120,6 +120,8 @@ def run_kalshi_discovery(
                             "bracket_low": market.bracket_low,
                             "bracket_high": market.bracket_high,
                             "is_edge_bracket": market.is_edge_bracket,
+                            # Core INSERT bypasses ORM onupdate, so set explicitly
+                            "updated_at": datetime.now(timezone.utc),
                         },
                     )
                     session.execute(stmt)
@@ -234,6 +236,7 @@ def run_kalshi_snapshots(
 
     insert_count = 0
     skip_count = 0
+    error_count = 0
 
     with session_factory() as session:
         for snapshot in snapshots:
@@ -247,20 +250,34 @@ def run_kalshi_snapshots(
                 )
                 continue
 
-            session.add(
-                KalshiMarketSnapshot(
-                    market_id=db_market_id,  # type: ignore[arg-type]
-                    timestamp=snapshot.timestamp,
-                    yes_bid=snapshot.yes_bid,
-                    yes_ask=snapshot.yes_ask,
-                    no_bid=snapshot.no_bid,
-                    no_ask=snapshot.no_ask,
-                    last_price=snapshot.last_price,
-                    volume=snapshot.volume,
-                    open_interest=snapshot.open_interest,
+            try:
+                # SAVEPOINT per snapshot so a single failure doesn't
+                # poison the session and roll back the entire batch.
+                with session.begin_nested():
+                    session.add(
+                        KalshiMarketSnapshot(
+                            market_id=db_market_id,  # type: ignore[arg-type]
+                            timestamp=snapshot.timestamp,
+                            yes_bid=snapshot.yes_bid,
+                            yes_ask=snapshot.yes_ask,
+                            no_bid=snapshot.no_bid,
+                            no_ask=snapshot.no_ask,
+                            last_price=snapshot.last_price,
+                            volume=snapshot.volume,
+                            open_interest=snapshot.open_interest,
+                        )
+                    )
+                insert_count += 1
+            except Exception as exc:
+                error_count += 1
+                logger.error(
+                    "kalshi_snapshot_insert_error",
+                    ticker=snapshot.ticker,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    correlation_id=correlation_id,
+                    run_id=run_id,
                 )
-            )
-            insert_count += 1
 
     logger.info(
         "kalshi_snapshots_complete",
@@ -268,6 +285,7 @@ def run_kalshi_snapshots(
         correlation_id=correlation_id,
         inserted=insert_count,
         skipped=skip_count,
+        errors=error_count,
         total_fetched=len(snapshots),
     )
 

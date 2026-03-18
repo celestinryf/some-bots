@@ -189,8 +189,8 @@ class Prediction(Base):
         nullable=False,
     )
     model_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    predicted_temp: Mapped[float] = mapped_column(Float, nullable=False)
-    std_dev: Mapped[float] = mapped_column(Float, nullable=False)
+    predicted_temp: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    std_dev: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     probability_distribution: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 

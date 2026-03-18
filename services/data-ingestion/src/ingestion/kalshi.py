@@ -434,14 +434,31 @@ def run_kalshi_snapshot_cleanup(
         cutoff=str(cutoff),
     )
 
+    # Delete in batches to limit lock contention and WAL generation.
+    # A single unbounded DELETE could block concurrent snapshot INSERTs.
+    batch_size = 10_000
+    deleted_count = 0
+
     try:
-        with session_factory() as session:
-            result = session.execute(
-                delete(KalshiMarketSnapshot).where(
-                    KalshiMarketSnapshot.timestamp < cutoff,
+        while True:
+            with session_factory() as session:
+                # Subquery to select a bounded batch of IDs for deletion.
+                batch_ids = (
+                    select(KalshiMarketSnapshot.id)
+                    .where(KalshiMarketSnapshot.timestamp < cutoff)
+                    .limit(batch_size)
+                    .subquery()
                 )
-            )
-            deleted_count = result.rowcount  # type: ignore[union-attr]
+                result = session.execute(
+                    delete(KalshiMarketSnapshot).where(
+                        KalshiMarketSnapshot.id.in_(select(batch_ids))
+                    )
+                )
+                batch_deleted = result.rowcount  # type: ignore[union-attr]
+                deleted_count += batch_deleted
+
+            if batch_deleted < batch_size:
+                break
 
     except Exception as exc:
         logger.error(
@@ -450,6 +467,7 @@ def run_kalshi_snapshot_cleanup(
             error_type=type(exc).__name__,
             correlation_id=correlation_id,
             run_id=run_id,
+            deleted_before_failure=deleted_count,
         )
         return
 

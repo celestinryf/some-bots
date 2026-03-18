@@ -2,7 +2,8 @@
 PirateWeather API client (Dark Sky-compatible).
 
 Daily forecasts with explicit temperatureHigh/temperatureLow.
-$2/mo plan. API key passed via query parameter (no header auth supported).
+$2/mo plan. API key passed via header; URL path requires a placeholder
+in the key slot (Dark Sky legacy route: /forecast/{key}/{lat},{lon}).
 """
 
 from datetime import datetime, timezone
@@ -30,17 +31,19 @@ class PirateWeatherClient(WeatherClient):
         self._api_key = api_key
 
     def _get_headers(self) -> dict[str, str]:
-        return {}
+        # PirateWeather supports header-based auth, keeping the key out of
+        # URL paths and query strings (avoids exposure in logs/proxies).
+        return {"apikey": self._api_key}
 
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:
-        return f"{_BASE_URL}/{lat},{lon}"
+        # Dark Sky-compatible route requires a key path segment; use a
+        # placeholder since the real key is sent via header.
+        return f"{_BASE_URL}/key/{lat},{lon}"
 
     def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str]:
-        # PirateWeather only supports API key via query param (no header auth).
         return {
             "units": "us",
             "exclude": "minutely,hourly,alerts",
-            "apikey": self._api_key,
         }
 
     def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:

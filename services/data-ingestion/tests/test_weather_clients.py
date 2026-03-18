@@ -400,8 +400,8 @@ class TestVisualCrossingClient:
 # PirateWeather Client Tests
 # ===========================================================================
 
-_PW_URL = "https://api.pirateweather.net/forecast/40.7,-74.0"
-_PW_PARAMS: dict[str, str] = {"units": "us", "exclude": "minutely,hourly,alerts", "apikey": "test-pw-key"}
+_PW_URL = "https://api.pirateweather.net/forecast/key/40.7,-74.0"
+_PW_PARAMS: dict[str, str] = {"units": "us", "exclude": "minutely,hourly,alerts"}
 
 
 class TestPirateWeatherClient:
@@ -494,18 +494,20 @@ class TestPirateWeatherClient:
             client.fetch_forecast("NYC", 40.7, -74.0, far_future)
 
     @respx.mock
-    def test_api_key_passed_as_param(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
-        """API key is passed via query params, not embedded in the URL path."""
+    def test_api_key_passed_as_header(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
+        """API key is passed via header, not in the URL path or query string."""
         fixture = _load_fixture("pirate_weather_forecast.json")
         route = respx.get(_PW_URL, params=_PW_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
         client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
-        request_url = str(route.calls[0].request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-        # Key must be in query params, NOT in the URL path
-        assert "apikey=test-pw-key" in request_url
+        request = route.calls[0].request  # pyright: ignore[reportUnknownMemberType]
+        request_url = str(request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        # Key must be in headers, NOT in URL path or query string
+        assert request.headers.get("apikey") == "test-pw-key"  # pyright: ignore[reportUnknownMemberType]
         assert "/test-pw-key/" not in request_url
+        assert "apikey=" not in request_url
 
 
 # ===========================================================================

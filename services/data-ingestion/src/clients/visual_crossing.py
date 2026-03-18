@@ -2,7 +2,7 @@
 Visual Crossing Weather API client.
 
 Timeline endpoint provides daily forecasts with explicit tempmax/tempmin.
-$35/mo plan. API key passed as query parameter.
+$35/mo plan. API key passed as query parameter (no header auth supported).
 """
 
 from datetime import datetime, timezone
@@ -37,6 +37,7 @@ class VisualCrossingClient(WeatherClient):
         return f"{_BASE_URL}/{lat},{lon}/{date_str}"
 
     def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str]:
+        # Visual Crossing only supports API key via query param (no header auth).
         return {
             "key": self._api_key,
             "unitGroup": "us",

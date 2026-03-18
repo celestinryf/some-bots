@@ -2,7 +2,7 @@
 PirateWeather API client (Dark Sky-compatible).
 
 Daily forecasts with explicit temperatureHigh/temperatureLow.
-$2/mo plan. API key passed via query parameter.
+$2/mo plan. API key passed via query parameter (no header auth supported).
 """
 
 from datetime import datetime, timezone
@@ -36,6 +36,7 @@ class PirateWeatherClient(WeatherClient):
         return f"{_BASE_URL}/{lat},{lon}"
 
     def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str]:
+        # PirateWeather only supports API key via query param (no header auth).
         return {
             "units": "us",
             "exclude": "minutely,hourly,alerts",

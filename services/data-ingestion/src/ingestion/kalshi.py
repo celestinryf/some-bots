@@ -347,12 +347,6 @@ def run_kalshi_settlements(
     with session_factory() as session:
         for settled in settled_markets:
             try:
-                settlement_val = (
-                    float(settled.settlement_value)
-                    if settled.settlement_value is not None
-                    else None
-                )
-
                 # SAVEPOINT per market so a single failure doesn't poison
                 # the session and roll back the entire batch.
                 with session.begin_nested():
@@ -361,7 +355,7 @@ def run_kalshi_settlements(
                         .where(KalshiMarket.ticker == settled.ticker)
                         .values(
                             status=settled.final_status,
-                            settlement_value=settlement_val,
+                            settlement_value=settled.settlement_value,
                             # Core UPDATE bypasses ORM onupdate, so set explicitly
                             updated_at=datetime.now(timezone.utc),
                         )

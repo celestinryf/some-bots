@@ -58,8 +58,8 @@ class DiscoveredMarket:
     city_code: str
     forecast_date: date
     market_type: MarketType
-    bracket_low: float | None
-    bracket_high: float | None
+    bracket_low: Decimal | None
+    bracket_high: Decimal | None
     is_edge_bracket: bool
     yes_bid: Decimal | None
     yes_ask: Decimal | None
@@ -160,16 +160,16 @@ _ABOVE_PREFIX_PATTERN = re.compile(
 )
 
 
-def parse_bracket(subtitle: str | None) -> tuple[float | None, float | None, bool]:
+def parse_bracket(subtitle: str | None) -> tuple[Decimal | None, Decimal | None, bool]:
     """Parse bracket boundaries from a market subtitle.
 
     Returns:
         (bracket_low, bracket_high, is_edge_bracket)
 
     Examples:
-        "62°F to 63°F" → (62.0, 63.0, False)
-        "Below 50°F"   → (None, 50.0, True)
-        "72°F or above" → (72.0, None, True)
+        "62°F to 63°F" → (Decimal("62"), Decimal("63"), False)
+        "Below 50°F"   → (None, Decimal("50"), True)
+        "72°F or above" → (Decimal("72"), None, True)
         None            → (None, None, False)
     """
     if not subtitle:
@@ -178,27 +178,27 @@ def parse_bracket(subtitle: str | None) -> tuple[float | None, float | None, boo
     # Range bracket (most common)
     match = _RANGE_PATTERN.search(subtitle)
     if match:
-        return float(match.group(1)), float(match.group(2)), False
+        return Decimal(match.group(1)), Decimal(match.group(2)), False
 
     # "Below X" / "under X" / "less than X"
     match = _BELOW_PATTERN.search(subtitle)
     if match:
-        return None, float(match.group(1)), True
+        return None, Decimal(match.group(1)), True
 
     # "X or less" / "X or lower" / "X or below"
     match = _OR_LESS_PATTERN.search(subtitle)
     if match:
-        return None, float(match.group(1)), True
+        return None, Decimal(match.group(1)), True
 
     # "X or above" / "X or more" / "X+"
     match = _OR_ABOVE_PATTERN.search(subtitle)
     if match:
-        return float(match.group(1)), None, True
+        return Decimal(match.group(1)), None, True
 
     # "above X" / "over X" / "more than X"
     match = _ABOVE_PREFIX_PATTERN.search(subtitle)
     if match:
-        return float(match.group(1)), None, True
+        return Decimal(match.group(1)), None, True
 
     return None, None, False
 

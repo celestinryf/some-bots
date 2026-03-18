@@ -269,8 +269,10 @@ class WeatherClient(ABC):
     def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str] | None:
         """Return query parameters for the request.
 
-        API keys should be passed here rather than embedded in _build_url()
-        so they never appear in logged URL strings. Default returns None.
+        Prefer _get_headers() for API keys when the API supports it.
+        When the API only supports query-param auth (PirateWeather,
+        Visual Crossing, OWM), pass the key here with a comment
+        documenting the constraint. Never embed keys in _build_url().
         """
         return None
 

@@ -1,8 +1,9 @@
 """
 OpenWeatherMap 5-day/3-hour forecast API client.
 
-Free tier: 1M calls/month. API key as `appid` query parameter.
-No daily summary — must aggregate 3-hour intervals into daily high/low.
+Free tier: 1M calls/month. API key as `appid` query parameter (no header auth
+on the free 5-day endpoint). No daily summary — must aggregate 3-hour
+intervals into daily high/low.
 """
 
 from datetime import datetime, timezone
@@ -36,6 +37,7 @@ class OpenWeatherMapClient(WeatherClient):
         return _BASE_URL
 
     def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str]:
+        # OWM free 5-day endpoint only supports API key via query param.
         return {
             "lat": str(lat),
             "lon": str(lon),

@@ -268,10 +268,10 @@ class TestKalshiMarket:
             city_id=city.id,
             forecast_date=datetime.now(timezone.utc),
             market_type=MarketType.LOW,
-            bracket_low=None, bracket_high=60.0,
+            bracket_low=None, bracket_high=Decimal("60"),
             is_edge_bracket=True,
             status=MarketStatus.SETTLED,
-            settlement_value=58.0,
+            settlement_value=Decimal("58"),
         )
         db_session.add(market)
         db_session.flush()

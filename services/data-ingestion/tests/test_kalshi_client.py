@@ -126,62 +126,62 @@ class TestParseBracket:
     # --- Range brackets ---
 
     def test_range_degrees_f(self) -> None:
-        assert parse_bracket("62°F to 63°F") == (62.0, 63.0, False)
+        assert parse_bracket("62°F to 63°F") == (Decimal("62"), Decimal("63"), False)
 
     def test_range_plain_numbers(self) -> None:
-        assert parse_bracket("62 to 63") == (62.0, 63.0, False)
+        assert parse_bracket("62 to 63") == (Decimal("62"), Decimal("63"), False)
 
     def test_range_dash_separator(self) -> None:
-        assert parse_bracket("62°F - 63°F") == (62.0, 63.0, False)
+        assert parse_bracket("62°F - 63°F") == (Decimal("62"), Decimal("63"), False)
 
     def test_range_negative_temps(self) -> None:
-        assert parse_bracket("-5°F to -3°F") == (-5.0, -3.0, False)
+        assert parse_bracket("-5°F to -3°F") == (Decimal("-5"), Decimal("-3"), False)
 
     def test_range_decimal_temps(self) -> None:
-        assert parse_bracket("62.5 to 63.5") == (62.5, 63.5, False)
+        assert parse_bracket("62.5 to 63.5") == (Decimal("62.5"), Decimal("63.5"), False)
 
     # --- Below/under edge brackets ---
 
     def test_below(self) -> None:
-        assert parse_bracket("Below 50°F") == (None, 50.0, True)
+        assert parse_bracket("Below 50°F") == (None, Decimal("50"), True)
 
     def test_under(self) -> None:
-        assert parse_bracket("Under 45") == (None, 45.0, True)
+        assert parse_bracket("Under 45") == (None, Decimal("45"), True)
 
     def test_less_than(self) -> None:
-        assert parse_bracket("Less than 40°F") == (None, 40.0, True)
+        assert parse_bracket("Less than 40°F") == (None, Decimal("40"), True)
 
     def test_or_less(self) -> None:
-        assert parse_bracket("49°F or less") == (None, 49.0, True)
+        assert parse_bracket("49°F or less") == (None, Decimal("49"), True)
 
     def test_or_lower(self) -> None:
-        assert parse_bracket("49°F or lower") == (None, 49.0, True)
+        assert parse_bracket("49°F or lower") == (None, Decimal("49"), True)
 
     def test_or_below(self) -> None:
-        assert parse_bracket("49 or below") == (None, 49.0, True)
+        assert parse_bracket("49 or below") == (None, Decimal("49"), True)
 
     # --- Above/over edge brackets ---
 
     def test_or_above(self) -> None:
-        assert parse_bracket("72°F or above") == (72.0, None, True)
+        assert parse_bracket("72°F or above") == (Decimal("72"), None, True)
 
     def test_or_more(self) -> None:
-        assert parse_bracket("72 or more") == (72.0, None, True)
+        assert parse_bracket("72 or more") == (Decimal("72"), None, True)
 
     def test_or_higher(self) -> None:
-        assert parse_bracket("72°F or higher") == (72.0, None, True)
+        assert parse_bracket("72°F or higher") == (Decimal("72"), None, True)
 
     def test_plus_suffix(self) -> None:
-        assert parse_bracket("72°F+") == (72.0, None, True)
+        assert parse_bracket("72°F+") == (Decimal("72"), None, True)
 
     def test_above_prefix(self) -> None:
-        assert parse_bracket("Above 72°F") == (72.0, None, True)
+        assert parse_bracket("Above 72°F") == (Decimal("72"), None, True)
 
     def test_over_prefix(self) -> None:
-        assert parse_bracket("Over 80") == (80.0, None, True)
+        assert parse_bracket("Over 80") == (Decimal("80"), None, True)
 
     def test_more_than_prefix(self) -> None:
-        assert parse_bracket("More than 90°F") == (90.0, None, True)
+        assert parse_bracket("More than 90°F") == (Decimal("90"), None, True)
 
     # --- Edge cases ---
 
@@ -340,8 +340,8 @@ class TestDiscoverMarkets:
         assert m.city_code == "NYC"
         assert m.forecast_date == date(2026, 3, 16)
         assert m.market_type == MarketType.HIGH
-        assert m.bracket_low == 62.0
-        assert m.bracket_high == 63.0
+        assert m.bracket_low == Decimal("62")
+        assert m.bracket_high == Decimal("63")
         assert m.is_edge_bracket is False
         assert m.yes_bid == Decimal("0.50")
         assert m.yes_ask == Decimal("0.54")
@@ -437,7 +437,7 @@ class TestDiscoverMarkets:
         edges = [m for m in result if m.is_edge_bracket and m.market_type == MarketType.HIGH]
         assert len(edges) >= 1
         assert edges[0].bracket_low is None
-        assert edges[0].bracket_high == 50.0
+        assert edges[0].bracket_high == Decimal("50")
 
     def test_edge_bracket_above(self) -> None:
         client, mock = _make_kalshi_client()
@@ -453,7 +453,7 @@ class TestDiscoverMarkets:
 
         edges = [m for m in result if m.is_edge_bracket and m.market_type == MarketType.HIGH]
         assert len(edges) >= 1
-        assert edges[0].bracket_low == 73.0
+        assert edges[0].bracket_low == Decimal("73")
         assert edges[0].bracket_high is None
 
     def test_multiple_cities(self) -> None:

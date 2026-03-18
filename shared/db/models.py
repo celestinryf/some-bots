@@ -134,8 +134,8 @@ class KalshiMarket(Base):
         Enum(MarketType, name="market_type_enum", create_constraint=True),
         nullable=False,
     )
-    bracket_low: Mapped[float | None] = mapped_column(Float, nullable=True)
-    bracket_high: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bracket_low: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    bracket_high: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     is_edge_bracket: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     status: Mapped[MarketStatus] = mapped_column(
         Enum(MarketStatus, name="market_status_enum", create_constraint=True),

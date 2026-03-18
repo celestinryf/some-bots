@@ -13,7 +13,6 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import datetime
 
-from sqlalchemy import CursorResult
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -62,7 +61,6 @@ def run_weather_ingestion(
     )
 
     success_count = 0
-    skip_count = 0
     error_count = 0
 
     with session_factory() as session:
@@ -122,7 +120,6 @@ def run_weather_ingestion(
         run_id=run_id,
         correlation_id=correlation_id,
         success=success_count,
-        skipped=skip_count,
         errors=error_count,
         total=len(city_map),
     )

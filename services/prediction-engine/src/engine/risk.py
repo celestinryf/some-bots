@@ -37,8 +37,10 @@ def forecast_spread_score(temps: list[Decimal]) -> Decimal:
     Mapping:
         0-1°F spread  → 1 (sources nearly identical)
         2°F spread    → 3
+        3°F spread    → 4
         5°F spread    → 6 (HIGH SPREAD flag threshold)
-        7°F+ spread   → 10
+        7°F spread    → 8
+        >7°F spread   → 10
 
     Args:
         temps: Temperature values from all available sources.

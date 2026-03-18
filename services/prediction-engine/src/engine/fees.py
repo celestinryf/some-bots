@@ -35,7 +35,7 @@ def kalshi_taker_fee(contracts: int, price: Decimal) -> Decimal:
         ValueError: If contracts < 1 or price is outside (0, 1).
         TypeError: If contracts is not an int.
     """
-    if not isinstance(contracts, int):
+    if not isinstance(contracts, int) or isinstance(contracts, bool):
         raise TypeError(f"contracts must be an int, got {type(contracts).__name__}")
 
     if contracts < 1:

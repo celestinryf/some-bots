@@ -105,6 +105,10 @@ class TestKalshiTakerFee:
         with pytest.raises(TypeError, match="int"):
             kalshi_taker_fee(1.5, Decimal("0.50"))  # type: ignore[arg-type]
 
+    def test_bool_contracts_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="int"):
+            kalshi_taker_fee(True, Decimal("0.50"))  # type: ignore[arg-type]
+
     def test_float_price_raises_type_error(self) -> None:
         with pytest.raises(TypeError, match="Decimal"):
             kalshi_taker_fee(1, 0.50)  # type: ignore[arg-type]

@@ -93,6 +93,9 @@ def compute_ensemble_std(
 ) -> Decimal:
     """Compute standard deviation of temperature forecasts with a floor.
 
+    Uses sample standard deviation (N-1 denominator / Bessel's correction)
+    to avoid underestimating uncertainty with small ensembles (2-4 sources).
+
     The floor prevents overconfident predictions when sources agree
     exactly (std=0) or when only one source is available. A floor of
     1.5 degrees F means we never claim more than ~95% confidence in
@@ -122,7 +125,12 @@ def compute_ensemble_std(
         return floor
 
     mean = compute_ensemble_mean(temps)
-    variance = sum((t - mean) ** 2 for t in temps) / len(temps)
+    # Use sample variance (N-1 denominator / Bessel's correction) to avoid
+    # underestimating uncertainty with small ensembles (2-4 sources).
+    # With N=2, population std gives 2.0°F vs sample std 2.83°F for a
+    # 4°F spread — the sample estimate better reflects true forecast
+    # uncertainty during cold-start when source coverage is limited.
+    variance = sum((t - mean) ** 2 for t in temps) / (len(temps) - 1)
 
     # Decimal doesn't have sqrt, so convert to float and back.
     # Guard against overflow (extremely large variance → float inf).
@@ -271,8 +279,17 @@ def build_probability_distribution(
             sum_check: float
 
     Raises:
-        PredictionError: If probability sum is outside tolerance.
+        PredictionError: If probability sum is outside tolerance,
+            or if temps/source_temps contain non-finite values.
     """
+    for temp_val in temps:
+        temp_f = float(temp_val)
+        if not math.isfinite(temp_f):
+            raise PredictionError(
+                f"temps contains non-finite value: {temp_val}",
+                source="probability",
+            )
+
     mean = compute_ensemble_mean(temps)
     std = compute_ensemble_std(temps, std_dev_floor)
 

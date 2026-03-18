@@ -115,21 +115,22 @@ class TestComputeEnsembleStd:
         assert result == Decimal("1.50")
 
     def test_std_above_floor(self) -> None:
-        # [68, 72] has std = 2.0 (population std)
+        # [68, 72]: mean=70, sample variance = (4+4)/1 = 8, std = sqrt(8) ≈ 2.83
         temps = [Decimal("68"), Decimal("72")]
         result = compute_ensemble_std(temps, floor=Decimal("1.50"))
-        assert result == Decimal("2.0")
+        assert float(result) == pytest.approx(2.8284, abs=0.01)
 
     def test_std_below_floor_uses_floor(self) -> None:
-        # [70, 71] has std = 0.5 (population std)
+        # [70, 71]: mean=70.5, sample variance = 0.5, std = sqrt(0.5) ≈ 0.71 → floor
         temps = [Decimal("70"), Decimal("71")]
         result = compute_ensemble_std(temps, floor=Decimal("1.50"))
         assert result == Decimal("1.50")
 
     def test_wide_spread(self) -> None:
+        # [60, 80]: mean=70, sample variance = 200, std = sqrt(200) ≈ 14.14
         temps = [Decimal("60"), Decimal("80")]
         result = compute_ensemble_std(temps, floor=Decimal("1.50"))
-        assert result == Decimal("10.0")
+        assert float(result) == pytest.approx(14.1421, abs=0.01)
 
     def test_empty_list_raises(self) -> None:
         with pytest.raises(PredictionError, match="empty temperature list"):
@@ -339,6 +340,26 @@ class TestBuildProbabilityDistribution:
             BracketDef(Decimal("70"), Decimal("72"), "m3"),
             BracketDef(Decimal("72"), None, "m4"),
         ]
+
+    def test_non_finite_temps_raises(self) -> None:
+        brackets = self._make_brackets()
+        with pytest.raises(PredictionError, match="non-finite"):
+            build_probability_distribution(
+                temps=[Decimal("70"), Decimal("inf")],
+                brackets=brackets,
+                source_temps={"NWS": Decimal("70"), "BAD": Decimal("inf")},
+                std_dev_floor=Decimal("1.50"),
+            )
+
+    def test_nan_temps_raises(self) -> None:
+        brackets = self._make_brackets()
+        with pytest.raises(PredictionError, match="non-finite"):
+            build_probability_distribution(
+                temps=[Decimal("70"), Decimal("nan")],
+                brackets=brackets,
+                source_temps={"NWS": Decimal("70"), "BAD": Decimal("nan")},
+                std_dev_floor=Decimal("1.50"),
+            )
 
     def test_happy_path(self) -> None:
         temps = [Decimal("70"), Decimal("72"), Decimal("71"), Decimal("69")]

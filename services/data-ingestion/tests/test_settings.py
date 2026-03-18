@@ -30,11 +30,17 @@ class TestSettingsDefaults:
 class TestDatabaseUrl:
     def test_database_url_format(self):
         s = Settings(db_user="testuser", db_password="testpass", db_host="localhost", db_port=5432, db_name="testdb")
-        assert s.database_url == "postgresql://testuser:testpass@localhost:5432/testdb"
+        url = s.database_url
+        assert url.render_as_string(hide_password=False) == "postgresql://testuser:testpass@localhost:5432/testdb"
+
+    def test_database_url_redacts_password(self):
+        s = Settings(db_user="u", db_password="secret", db_host="h", db_port=5432, db_name="d")
+        assert "secret" not in str(s.database_url)
 
     def test_database_url_with_ssl(self):
         s = Settings(db_user="u", db_password="p", db_host="h", db_port=5432, db_name="d")
-        assert s.database_url_with_ssl == "postgresql://u:p@h:5432/d?sslmode=require"
+        url = s.database_url_with_ssl
+        assert url.render_as_string(hide_password=False) == "postgresql://u:p@h:5432/d?sslmode=require"
 
 
 class TestIsProduction:

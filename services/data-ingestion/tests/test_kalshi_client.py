@@ -639,17 +639,20 @@ class TestCheckSettlements:
 
         assert result == []
 
-    def test_ignores_settled_without_result(self) -> None:
+    def test_settled_without_result_still_captured(self) -> None:
+        """SETTLED with empty result is still captured to avoid zombie ACTIVE rows."""
         client, mock = _make_kalshi_client()
         market = _make_mock_market(
             status=KalshiMarketStatus.SETTLED,
-            result=None,  # No result yet
+            result=None,
         )
         mock.get_markets.return_value = [market]
 
         result = client.check_settlements(["KXHIGHNYC-26MAR16-T62"])
 
-        assert result == []
+        assert len(result) == 1
+        assert result[0].final_status == MarketStatus.SETTLED
+        assert result[0].result == ""
 
     def test_mixed_settled_and_active(self) -> None:
         client, mock = _make_kalshi_client()

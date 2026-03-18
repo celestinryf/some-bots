@@ -554,23 +554,14 @@ class KalshiClient:
 
             for market in markets:
                 status = map_kalshi_status(market.status)
-                if status == MarketStatus.SETTLED and market.result:
-                    resolved.append(SettledMarket(
-                        ticker=market.ticker,
-                        result=market.result,
-                        settlement_value=_to_decimal(
-                            market.settlement_value_dollars
-                        ),
-                        final_status=MarketStatus.SETTLED,
-                    ))
-                elif status == MarketStatus.CLOSED:
+                if status in (MarketStatus.SETTLED, MarketStatus.CLOSED):
                     resolved.append(SettledMarket(
                         ticker=market.ticker,
                         result=market.result or "",
                         settlement_value=_to_decimal(
                             market.settlement_value_dollars
                         ),
-                        final_status=MarketStatus.CLOSED,
+                        final_status=status,
                     ))
 
         logger.info(

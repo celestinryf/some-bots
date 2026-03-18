@@ -105,8 +105,8 @@ class WeatherForecast(Base):
     city_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cities.id"), nullable=False)
     forecast_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    temp_high: Mapped[float | None] = mapped_column(Float, nullable=True)
-    temp_low: Mapped[float | None] = mapped_column(Float, nullable=True)
+    temp_high: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    temp_low: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 

@@ -8,6 +8,8 @@ rather than reading os.environ directly — single source of truth, easy to test
 import os
 from dataclasses import dataclass
 
+from sqlalchemy.engine import URL
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -59,15 +61,20 @@ class Settings:
                 )
 
     @property
-    def database_url(self) -> str:
-        return (
-            f"postgresql://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+    def database_url(self) -> URL:
+        """SQLAlchemy URL object — redacts password in str()/repr()/logs."""
+        return URL.create(
+            drivername="postgresql",
+            username=self.db_user,
+            password=self.db_password,
+            host=self.db_host,
+            port=self.db_port,
+            database=self.db_name,
         )
 
     @property
-    def database_url_with_ssl(self) -> str:
-        return f"{self.database_url}?sslmode=require"
+    def database_url_with_ssl(self) -> URL:
+        return self.database_url.set(query={"sslmode": "require"})
 
     @property
     def is_production(self) -> bool:

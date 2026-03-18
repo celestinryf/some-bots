@@ -312,7 +312,8 @@ def _run_scheduled(
             id="kalshi_discovery_full",
             name="Kalshi full market discovery (backfill)",
             max_instances=1,
-            next_run_time=now + timedelta(minutes=1),
+            # Cold-start already does a full backfill; defer first run by 24h
+            next_run_time=now + timedelta(hours=24),
         )
 
         scheduler.add_job(  # type: ignore[reportUnknownMemberType]

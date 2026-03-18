@@ -49,7 +49,7 @@ def kalshi_taker_fee(contracts: int, price: Decimal) -> Decimal:
             f"price must be between 0 and 1 exclusive, got {price}"
         )
 
-    raw_fee = _FEE_RATE * contracts * price * (1 - price)
+    raw_fee = _FEE_RATE * contracts * price * (Decimal("1") - price)
 
     # Ceil to nearest cent using pure Decimal arithmetic (no float conversion)
     return raw_fee.quantize(_ONE_CENT, rounding=ROUND_CEILING)

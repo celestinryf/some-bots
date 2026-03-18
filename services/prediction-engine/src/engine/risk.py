@@ -298,6 +298,14 @@ def compute_risk_score(
             f"Factor/weight key mismatch: {', '.join(parts)}"
         )
 
+    for key, weight in weights.items():
+        if weight < 0:
+            raise ValueError(f"Weight '{key}' must be non-negative, got {weight}")
+
+    weight_sum = sum(weights.values())
+    if abs(weight_sum - Decimal("1")) > Decimal("0.001"):
+        raise ValueError(f"Weights must sum to 1.0, got {weight_sum}")
+
     for key, score in factors.items():
         if score < _SCORE_MIN or score > _SCORE_MAX:
             raise ValueError(

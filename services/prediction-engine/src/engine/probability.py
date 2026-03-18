@@ -107,7 +107,11 @@ def compute_ensemble_std(
 
     Raises:
         PredictionError: If temps is empty.
+        ValueError: If floor is not positive.
     """
+    if floor <= 0:
+        raise ValueError(f"floor must be positive, got {floor}")
+
     if not temps:
         raise PredictionError(
             "Cannot compute ensemble std from empty temperature list",
@@ -120,8 +124,15 @@ def compute_ensemble_std(
     mean = compute_ensemble_mean(temps)
     variance = sum((t - mean) ** 2 for t in temps) / len(temps)
 
-    # Decimal doesn't have sqrt, so convert to float and back
-    std = Decimal(str(float(variance) ** 0.5))
+    # Decimal doesn't have sqrt, so convert to float and back.
+    # Guard against overflow (extremely large variance → float inf).
+    variance_f = float(variance)
+    if not math.isfinite(variance_f):
+        raise PredictionError(
+            f"Variance overflow: {variance}",
+            source="probability",
+        )
+    std = Decimal(str(variance_f ** 0.5))
 
     return max(std, floor)
 
@@ -171,7 +182,9 @@ def bracket_probability(
         return float(1.0 - norm.cdf(low, loc=mean, scale=std))
 
     # Normal bracket: P(low <= X < high)
-    return float(norm.cdf(high, loc=mean, scale=std) - norm.cdf(low, loc=mean, scale=std))
+    # Clamp to 0.0 in case of floating-point imprecision or direct call with low > high
+    prob = float(norm.cdf(high, loc=mean, scale=std) - norm.cdf(low, loc=mean, scale=std))
+    return max(0.0, prob)
 
 
 def map_brackets(

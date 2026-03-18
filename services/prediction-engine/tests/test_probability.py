@@ -401,6 +401,17 @@ class TestBuildProbabilityDistribution:
                 probability_sum_tolerance=0.001,
             )
 
+    def test_non_finite_source_temp_raises(self) -> None:
+        temps = [Decimal("70"), Decimal("72")]
+        brackets = self._make_brackets()
+        with pytest.raises(PredictionError, match="non-finite"):
+            build_probability_distribution(
+                temps=temps,
+                brackets=brackets,
+                source_temps={"NWS": Decimal("70"), "BAD": Decimal("inf")},
+                std_dev_floor=Decimal("1.50"),
+            )
+
     def test_source_temps_in_output(self) -> None:
         temps = [Decimal("70"), Decimal("72")]
         source_temps = {"NWS": Decimal("70"), "OWM": Decimal("72")}

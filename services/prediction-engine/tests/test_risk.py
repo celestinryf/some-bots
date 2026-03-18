@@ -346,6 +346,33 @@ class TestComputeRiskScore:
         with pytest.raises(ValueError, match="liquidity"):
             compute_risk_score(factors, self._default_weights())
 
+    def test_weights_not_summing_to_one_raises(self) -> None:
+        factors = {
+            "forecast_spread": Decimal("3"),
+            "source_agreement": Decimal("3"),
+            "city_accuracy": Decimal("5"),
+            "liquidity": Decimal("1"),
+            "bracket_edge": Decimal("6"),
+            "lead_time": Decimal("2"),
+        }
+        bad_weights = {k: Decimal("0.10") for k in factors}  # sum = 0.60
+        with pytest.raises(ValueError, match="sum to 1.0"):
+            compute_risk_score(factors, bad_weights)
+
+    def test_negative_weight_raises(self) -> None:
+        factors = {
+            "forecast_spread": Decimal("3"),
+            "source_agreement": Decimal("3"),
+            "city_accuracy": Decimal("5"),
+            "liquidity": Decimal("1"),
+            "bracket_edge": Decimal("6"),
+            "lead_time": Decimal("2"),
+        }
+        bad_weights = self._default_weights()
+        bad_weights["forecast_spread"] = Decimal("-0.05")
+        with pytest.raises(ValueError, match="non-negative"):
+            compute_risk_score(factors, bad_weights)
+
     def test_non_integer_factor_scores(self) -> None:
         factors = {
             "forecast_spread": Decimal("2.5"),

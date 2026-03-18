@@ -14,7 +14,9 @@ COPY shared/ /app/shared/
 RUN pip install --no-cache-dir -e /app/shared/
 
 # Copy service code
+# Copy service code
 COPY services/data-ingestion/src/ /app/src/
+COPY services/data-ingestion/data/ /app/data/
 
 # Own everything by app user
 RUN chown -R app:app /app

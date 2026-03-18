@@ -11,7 +11,7 @@ one job per source concurrently (Decision #13).
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -103,6 +103,8 @@ def run_weather_ingestion(
                                 result.temp_low, WeatherForecast.temp_low
                             ),
                             "raw_response": result.raw_response,
+                            # Core INSERT bypasses ORM onupdate, so set explicitly
+                            "updated_at": datetime.now(timezone.utc),
                         },
                     )
                     session.execute(stmt)

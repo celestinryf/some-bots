@@ -109,6 +109,7 @@ class WeatherForecast(Base):
     temp_low: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
 
     # Relationships
     city: Mapped["City"] = relationship(back_populates="forecasts")
@@ -122,6 +123,7 @@ class KalshiMarket(Base):
     __tablename__ = "kalshi_markets"
     __table_args__ = (
         Index("ix_markets_city_date", "city_id", "forecast_date"),
+        Index("ix_markets_status", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_new_uuid)
@@ -156,6 +158,7 @@ class KalshiMarketSnapshot(Base):
     __tablename__ = "kalshi_market_snapshots"
     __table_args__ = (
         Index("ix_snapshots_market_time", "market_id", "timestamp"),
+        UniqueConstraint("market_id", "timestamp", name="uq_snapshot_market_time"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_new_uuid)

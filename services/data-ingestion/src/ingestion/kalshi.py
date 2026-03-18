@@ -256,19 +256,20 @@ def run_kalshi_snapshots(
                 # SAVEPOINT per snapshot so a single failure doesn't
                 # poison the session and roll back the entire batch.
                 with session.begin_nested():
-                    session.add(
-                        KalshiMarketSnapshot(
-                            market_id=db_market_id,  # type: ignore[arg-type]
-                            timestamp=snapshot.timestamp,
-                            yes_bid=snapshot.yes_bid,
-                            yes_ask=snapshot.yes_ask,
-                            no_bid=snapshot.no_bid,
-                            no_ask=snapshot.no_ask,
-                            last_price=snapshot.last_price,
-                            volume=snapshot.volume,
-                            open_interest=snapshot.open_interest,
-                        )
+                    stmt = pg_insert(KalshiMarketSnapshot).values(
+                        market_id=db_market_id,
+                        timestamp=snapshot.timestamp,
+                        yes_bid=snapshot.yes_bid,
+                        yes_ask=snapshot.yes_ask,
+                        no_bid=snapshot.no_bid,
+                        no_ask=snapshot.no_ask,
+                        last_price=snapshot.last_price,
+                        volume=snapshot.volume,
+                        open_interest=snapshot.open_interest,
+                    ).on_conflict_do_nothing(
+                        constraint="uq_snapshot_market_time",
                     )
+                    session.execute(stmt)
                 insert_count += 1
             except Exception as exc:
                 error_count += 1

@@ -121,14 +121,18 @@ def _kalshi_discovery_wrapper(
     kalshi_client: KalshiClient,
     city_map: dict[str, City],
     cycle_id_gen: CycleIdGenerator,
+    full_backfill: bool = False,
 ) -> None:
     run_id = cycle_id_gen.get()
-    forecast_date = get_forecast_date()
+    # full_backfill=True passes forecast_date=None to discover all open
+    # markets (not just tomorrow), catching multi-day-out markets that
+    # Kalshi may open after the cold-start backfill.
+    forecast_date = None if full_backfill else get_forecast_date().date()
     run_kalshi_discovery(
         kalshi_client=kalshi_client,
         city_map=city_map,
         session_factory=get_session,
-        forecast_date=forecast_date.date(),
+        forecast_date=forecast_date,
         run_id=run_id,
     )
 
@@ -291,6 +295,24 @@ def _run_scheduled(
             name="Kalshi market discovery",
             max_instances=1,
             next_run_time=now,
+        )
+
+        # Daily full-backfill discovery to catch multi-day-out markets that
+        # Kalshi may open after the cold-start backfill.
+        scheduler.add_job(  # type: ignore[reportUnknownMemberType]
+            _kalshi_discovery_wrapper,
+            "interval",
+            hours=24,
+            kwargs={
+                "kalshi_client": kalshi_client,
+                "city_map": city_map,
+                "cycle_id_gen": daily_cycle,
+                "full_backfill": True,
+            },
+            id="kalshi_discovery_full",
+            name="Kalshi full market discovery (backfill)",
+            max_instances=1,
+            next_run_time=now + timedelta(minutes=1),
         )
 
         scheduler.add_job(  # type: ignore[reportUnknownMemberType]

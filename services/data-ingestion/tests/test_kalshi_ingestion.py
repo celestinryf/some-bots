@@ -226,8 +226,8 @@ class TestRunKalshiSnapshots:
         )
 
         mock_kalshi.fetch_snapshots.assert_called_once()
-        # session.add called for the snapshot
-        mock_session.add.assert_called_once()
+        # session.execute called: once for the SELECT, once for the pg_insert
+        assert mock_session.execute.call_count >= 2
 
     def test_no_active_markets_no_api_call(self) -> None:
         mock_kalshi = MagicMock(spec=KalshiClient)

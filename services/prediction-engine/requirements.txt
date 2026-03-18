@@ -3,6 +3,9 @@ scikit-learn>=1.4.0,<2.0
 scipy>=1.12.0,<2.0
 numpy>=1.26.0,<3.0
 
+# Scheduling
+APScheduler>=3.10.0,<4.0
+
 # Database
 sqlalchemy>=2.0.0,<3.0
 psycopg2-binary>=2.9.0,<3.0
@@ -15,3 +18,7 @@ structlog>=24.0.0,<26.0
 
 # Env
 python-dotenv>=1.0.0,<2.0
+
+# Testing (dev only — not installed in production image)
+# pytest>=8.0.0,<9.0
+# hypothesis>=6.98.0,<7.0

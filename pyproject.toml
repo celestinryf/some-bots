@@ -10,7 +10,7 @@ testpaths = [
     "services/prediction-engine/tests",
     "services/notification-service/tests",
 ]
-pythonpath = [".", "services/data-ingestion"]
+pythonpath = [".", "services/data-ingestion", "services/prediction-engine"]
 addopts = "-v --tb=short -m 'not integration and not db'"
 markers = [
     "db: tests that require a running PostgreSQL instance",

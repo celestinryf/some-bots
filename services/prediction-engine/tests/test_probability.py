@@ -305,6 +305,10 @@ class TestVerifyProbabilitySum:
     def test_empty_dict_returns_false(self) -> None:
         assert verify_probability_sum({}) is False
 
+    def test_empty_dict_with_invalid_tolerance_still_raises(self) -> None:
+        with pytest.raises(ValueError, match="tolerance"):
+            verify_probability_sum({}, tolerance=-5.0)
+
     def test_below_one(self) -> None:
         assert verify_probability_sum({"a": 0.4, "b": 0.4}, tolerance=0.01) is False
 

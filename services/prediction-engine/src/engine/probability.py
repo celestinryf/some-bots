@@ -233,11 +233,11 @@ def verify_probability_sum(
         True if sum is within tolerance of 1.0.
         False if probs is empty (empty set cannot sum to 1.0).
     """
-    if not probs:
-        return False
-
     if tolerance <= 0 or tolerance >= 1:
         raise ValueError(f"tolerance must be in (0, 1), got {tolerance}")
+
+    if not probs:
+        return False
 
     total = sum(probs.values())
     return abs(total - 1.0) <= tolerance

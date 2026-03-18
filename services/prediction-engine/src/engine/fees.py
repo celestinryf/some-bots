@@ -10,12 +10,12 @@ uncertainty) and approaches zero at prices near 0.00 or 1.00.
 All functions are pure — no DB access, no state, no side effects.
 """
 
-import math
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 
 # Kalshi taker fee rate (7% of notional risk)
 _FEE_RATE = Decimal("0.07")
+_ONE_CENT = Decimal("0.01")
 
 
 def kalshi_taker_fee(contracts: int, price: Decimal) -> Decimal:
@@ -25,7 +25,7 @@ def kalshi_taker_fee(contracts: int, price: Decimal) -> Decimal:
     The fee is per-trade, applied to the total position.
 
     Args:
-        contracts: Number of contracts (must be >= 1).
+        contracts: Number of contracts (must be >= 1, integer).
         price: Entry price per contract in dollars (0 < price < 1).
 
     Returns:
@@ -33,9 +33,16 @@ def kalshi_taker_fee(contracts: int, price: Decimal) -> Decimal:
 
     Raises:
         ValueError: If contracts < 1 or price is outside (0, 1).
+        TypeError: If contracts is not an int.
     """
+    if not isinstance(contracts, int):
+        raise TypeError(f"contracts must be an int, got {type(contracts).__name__}")
+
     if contracts < 1:
         raise ValueError(f"contracts must be >= 1, got {contracts}")
+
+    if not isinstance(price, Decimal):
+        raise TypeError(f"price must be a Decimal, got {type(price).__name__}")
 
     if price <= 0 or price >= 1:
         raise ValueError(
@@ -44,10 +51,8 @@ def kalshi_taker_fee(contracts: int, price: Decimal) -> Decimal:
 
     raw_fee = _FEE_RATE * contracts * price * (1 - price)
 
-    # Ceil to nearest cent: convert to cents, ceil, convert back
-    cents = float(raw_fee * 100)
-    ceiled_cents = math.ceil(cents)
-    return Decimal(str(ceiled_cents)) / 100
+    # Ceil to nearest cent using pure Decimal arithmetic (no float conversion)
+    return raw_fee.quantize(_ONE_CENT, rounding=ROUND_CEILING)
 
 
 def expected_value(
@@ -76,13 +81,20 @@ def expected_value(
     Raises:
         ValueError: If model_prob is outside [0, 1] or cost/fee are negative.
     """
+    if not isinstance(model_prob, Decimal):
+        raise TypeError(f"model_prob must be a Decimal, got {type(model_prob).__name__}")
+    if not isinstance(cost, Decimal):
+        raise TypeError(f"cost must be a Decimal, got {type(cost).__name__}")
+    if not isinstance(fee, Decimal):
+        raise TypeError(f"fee must be a Decimal, got {type(fee).__name__}")
+
     if model_prob < 0 or model_prob > 1:
         raise ValueError(
             f"model_prob must be in [0, 1], got {model_prob}"
         )
 
-    if cost < 0:
-        raise ValueError(f"cost must be non-negative, got {cost}")
+    if cost < 0 or cost > 1:
+        raise ValueError(f"cost must be in [0, 1], got {cost}")
 
     if fee < 0:
         raise ValueError(f"fee must be non-negative, got {fee}")

@@ -202,6 +202,17 @@ class TestBracketEdgeScore:
 
 
 # ---------------------------------------------------------------------------
+# liquidity_score — negative volume
+# ---------------------------------------------------------------------------
+
+
+class TestLiquidityScoreValidation:
+    def test_negative_volume_raises(self) -> None:
+        with pytest.raises(ValueError, match="non-negative"):
+            liquidity_score(-1)
+
+
+# ---------------------------------------------------------------------------
 # lead_time_score
 # ---------------------------------------------------------------------------
 
@@ -310,3 +321,41 @@ class TestComputeRiskScore:
         }
         with pytest.raises(ValueError, match="mismatch"):
             compute_risk_score(factors, self._default_weights())
+
+    def test_factor_score_below_min_raises(self) -> None:
+        factors = {
+            "forecast_spread": Decimal("0"),  # below minimum of 1
+            "source_agreement": Decimal("3"),
+            "city_accuracy": Decimal("5"),
+            "liquidity": Decimal("1"),
+            "bracket_edge": Decimal("6"),
+            "lead_time": Decimal("2"),
+        }
+        with pytest.raises(ValueError, match="forecast_spread"):
+            compute_risk_score(factors, self._default_weights())
+
+    def test_factor_score_above_max_raises(self) -> None:
+        factors = {
+            "forecast_spread": Decimal("3"),
+            "source_agreement": Decimal("3"),
+            "city_accuracy": Decimal("5"),
+            "liquidity": Decimal("100"),  # above maximum of 10
+            "bracket_edge": Decimal("6"),
+            "lead_time": Decimal("2"),
+        }
+        with pytest.raises(ValueError, match="liquidity"):
+            compute_risk_score(factors, self._default_weights())
+
+    def test_non_integer_factor_scores(self) -> None:
+        factors = {
+            "forecast_spread": Decimal("2.5"),
+            "source_agreement": Decimal("3.7"),
+            "city_accuracy": Decimal("5.0"),
+            "liquidity": Decimal("1.2"),
+            "bracket_edge": Decimal("6.8"),
+            "lead_time": Decimal("2.3"),
+        }
+        # 2.5*0.25 + 3.7*0.20 + 5.0*0.15 + 1.2*0.10 + 6.8*0.15 + 2.3*0.15
+        # = 0.625 + 0.740 + 0.750 + 0.120 + 1.020 + 0.345 = 3.600
+        result = compute_risk_score(factors, self._default_weights())
+        assert result == Decimal("3.6")

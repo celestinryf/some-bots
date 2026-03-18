@@ -51,17 +51,16 @@ def forecast_spread_score(temps: list[Decimal]) -> Decimal:
         return _SCORE_MIN
 
     spread = max(temps) - min(temps)
-    spread_f = float(spread)
 
-    if spread_f <= 1.0:
+    if spread <= Decimal("1"):
         return Decimal("1")
-    if spread_f <= 2.0:
+    if spread <= Decimal("2"):
         return Decimal("3")
-    if spread_f <= 3.0:
+    if spread <= Decimal("3"):
         return Decimal("4")
-    if spread_f <= 5.0:
+    if spread <= Decimal("5"):
         return Decimal("6")
-    if spread_f <= 7.0:
+    if spread <= Decimal("7"):
         return Decimal("8")
     return Decimal("10")
 
@@ -79,7 +78,7 @@ def source_agreement_score(
     Mapping:
         4/4 agree → 1 (all sources in bracket)
         3/4 agree → 3
-        2/4 agree → 6
+        2/4 agree → 5
         1/4 agree → 8
         0/4 agree → 10
 
@@ -101,15 +100,15 @@ def source_agreement_score(
         if below_ok and above_ok:
             in_bracket += 1
 
-    fraction = in_bracket / len(temps)
+    fraction = Decimal(in_bracket) / Decimal(len(temps))
 
-    if fraction >= 0.9:
+    if fraction >= Decimal("0.9"):
         return Decimal("1")
-    if fraction >= 0.7:
+    if fraction >= Decimal("0.7"):
         return Decimal("3")
-    if fraction >= 0.5:
+    if fraction >= Decimal("0.5"):
         return Decimal("5")
-    if fraction >= 0.25:
+    if fraction >= Decimal("0.25"):
         return Decimal("8")
     return Decimal("10")
 
@@ -138,15 +137,13 @@ def city_accuracy_score(city_accuracy: Decimal | None) -> Decimal:
     if city_accuracy is None:
         return Decimal("5")
 
-    acc = float(city_accuracy)
-
-    if acc >= 0.80:
+    if city_accuracy >= Decimal("0.80"):
         return Decimal("1")
-    if acc >= 0.70:
+    if city_accuracy >= Decimal("0.70"):
         return Decimal("3")
-    if acc >= 0.60:
+    if city_accuracy >= Decimal("0.60"):
         return Decimal("5")
-    if acc >= 0.50:
+    if city_accuracy >= Decimal("0.50"):
         return Decimal("7")
     return Decimal("10")
 
@@ -171,6 +168,9 @@ def liquidity_score(volume: int) -> Decimal:
     Returns:
         Risk score from 1 to 10.
     """
+    if volume < 0:
+        raise ValueError(f"volume must be non-negative, got {volume}")
+
     if volume > 100:
         return Decimal("1")
     if volume > 50:
@@ -210,12 +210,12 @@ def bracket_edge_score(
     Returns:
         Risk score from 1 to 10.
     """
-    distances: list[float] = []
+    distances: list[Decimal] = []
 
     if bracket_low is not None:
-        distances.append(abs(float(predicted_temp - bracket_low)))
+        distances.append(abs(predicted_temp - bracket_low))
     if bracket_high is not None:
-        distances.append(abs(float(predicted_temp - bracket_high)))
+        distances.append(abs(predicted_temp - bracket_high))
 
     if not distances:
         # Both bounds are None — fully unbounded, shouldn't happen
@@ -224,11 +224,11 @@ def bracket_edge_score(
 
     min_distance = min(distances)
 
-    if min_distance > 2.0:
+    if min_distance > Decimal("2"):
         return Decimal("1")
-    if min_distance > 1.0:
+    if min_distance > Decimal("1"):
         return Decimal("3")
-    if min_distance > 0.5:
+    if min_distance > Decimal("0.5"):
         return Decimal("6")
     return Decimal("9")
 
@@ -297,6 +297,12 @@ def compute_risk_score(
         raise ValueError(
             f"Factor/weight key mismatch: {', '.join(parts)}"
         )
+
+    for key, score in factors.items():
+        if score < _SCORE_MIN or score > _SCORE_MAX:
+            raise ValueError(
+                f"Factor '{key}' score must be in [{_SCORE_MIN}, {_SCORE_MAX}], got {score}"
+            )
 
     weighted_sum = sum(
         factors[key] * weights[key]

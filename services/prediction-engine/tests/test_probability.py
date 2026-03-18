@@ -38,15 +38,19 @@ from src.engine.probability import (
 class TestBracketDef:
     def test_normal_bracket_key(self) -> None:
         b = BracketDef(low=Decimal("65"), high=Decimal("66"), market_id="m1")
-        assert b.key == "[65.0, 66.0)"
+        assert b.key == "[65, 66)"
 
     def test_lower_edge_bracket_key(self) -> None:
         b = BracketDef(low=None, high=Decimal("65"), market_id="m1")
-        assert b.key == "(-inf, 65.0)"
+        assert b.key == "(-inf, 65)"
 
     def test_upper_edge_bracket_key(self) -> None:
         b = BracketDef(low=Decimal("75"), high=None, market_id="m1")
-        assert b.key == "[75.0, inf)"
+        assert b.key == "[75, inf)"
+
+    def test_decimal_key_preserves_precision(self) -> None:
+        b = BracketDef(low=Decimal("65.10"), high=Decimal("66.20"), market_id="m1")
+        assert b.key == "[65.10, 66.20)"
 
     def test_invalid_bracket_low_ge_high(self) -> None:
         with pytest.raises(ValidationError, match="must be less than"):
@@ -55,6 +59,14 @@ class TestBracketDef:
     def test_invalid_bracket_low_gt_high(self) -> None:
         with pytest.raises(ValidationError, match="must be less than"):
             BracketDef(low=Decimal("72"), high=Decimal("70"), market_id="m1")
+
+    def test_invalid_both_none(self) -> None:
+        with pytest.raises(ValidationError, match="at least one bound"):
+            BracketDef(low=None, high=None, market_id="m1")
+
+    def test_invalid_empty_market_id(self) -> None:
+        with pytest.raises(ValidationError, match="non-empty"):
+            BracketDef(low=Decimal("65"), high=Decimal("66"), market_id="")
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +239,22 @@ class TestBracketProbability:
         prob = bracket_probability(70.0, 100.0, 69.0, 71.0)
         assert 0.005 < prob < 0.015
 
+    def test_nan_mean_raises(self) -> None:
+        with pytest.raises(PredictionError, match="finite"):
+            bracket_probability(float("nan"), 2.0, 69.0, 71.0)
+
+    def test_inf_mean_raises(self) -> None:
+        with pytest.raises(PredictionError, match="finite"):
+            bracket_probability(float("inf"), 2.0, 69.0, 71.0)
+
+    def test_nan_std_raises(self) -> None:
+        with pytest.raises(PredictionError, match="finite"):
+            bracket_probability(70.0, float("nan"), 69.0, 71.0)
+
+    def test_inf_std_raises(self) -> None:
+        with pytest.raises(PredictionError, match="finite"):
+            bracket_probability(70.0, float("inf"), 69.0, 71.0)
+
 
 # ---------------------------------------------------------------------------
 # map_brackets
@@ -241,8 +269,8 @@ class TestMapBrackets:
         brackets = [BracketDef(Decimal("69"), Decimal("71"), "m1")]
         result = map_brackets(70.0, 2.0, brackets)
         assert len(result) == 1
-        assert "[69.0, 71.0)" in result
-        assert result["[69.0, 71.0)"] == pytest.approx(0.3829, abs=0.001)
+        assert "[69, 71)" in result
+        assert result["[69, 71)"] == pytest.approx(0.3829, abs=0.001)
 
     def test_complete_bracket_set_sums_to_one(self) -> None:
         """A complete set of brackets (lower edge + normal + upper edge)
@@ -274,11 +302,23 @@ class TestVerifyProbabilitySum:
     def test_outside_tolerance(self) -> None:
         assert verify_probability_sum({"a": 0.6, "b": 0.6}, tolerance=0.01) is False
 
-    def test_empty_dict(self) -> None:
-        assert verify_probability_sum({}) is True
+    def test_empty_dict_returns_false(self) -> None:
+        assert verify_probability_sum({}) is False
 
     def test_below_one(self) -> None:
         assert verify_probability_sum({"a": 0.4, "b": 0.4}, tolerance=0.01) is False
+
+    def test_invalid_tolerance_zero(self) -> None:
+        with pytest.raises(ValueError, match="tolerance"):
+            verify_probability_sum({"a": 0.5, "b": 0.5}, tolerance=0.0)
+
+    def test_invalid_tolerance_negative(self) -> None:
+        with pytest.raises(ValueError, match="tolerance"):
+            verify_probability_sum({"a": 0.5, "b": 0.5}, tolerance=-0.01)
+
+    def test_invalid_tolerance_ge_one(self) -> None:
+        with pytest.raises(ValueError, match="tolerance"):
+            verify_probability_sum({"a": 0.5, "b": 0.5}, tolerance=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +384,22 @@ class TestBuildProbabilityDistribution:
         )
         assert result["brackets"] == {}
         assert result["sum_check"] == 0.0
+
+    def test_bad_probability_sum_raises(self) -> None:
+        """When brackets don't cover the full range, sum deviates from 1.0."""
+        temps = [Decimal("70"), Decimal("72")]
+        # Only one bracket — won't sum to 1.0
+        brackets = [BracketDef(Decimal("69"), Decimal("71"), "m1")]
+        source_temps = {"NWS": Decimal("70"), "VC": Decimal("72")}
+
+        with pytest.raises(PredictionError, match="sum to"):
+            build_probability_distribution(
+                temps=temps,
+                brackets=brackets,
+                source_temps=source_temps,
+                std_dev_floor=Decimal("1.50"),
+                probability_sum_tolerance=0.001,
+            )
 
     def test_source_temps_in_output(self) -> None:
         temps = [Decimal("70"), Decimal("72")]

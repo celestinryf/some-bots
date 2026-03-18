@@ -14,6 +14,7 @@ Key concepts:
     - Edge brackets: open-ended ranges like (-inf, 65) or [75, inf)
 """
 
+import math
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -37,6 +38,16 @@ class BracketDef:
     market_id: str  # UUID as string for serialization
 
     def __post_init__(self) -> None:
+        if not self.market_id:
+            raise ValidationError(
+                "market_id must be a non-empty string",
+                source="probability",
+            )
+        if self.low is None and self.high is None:
+            raise ValidationError(
+                "Bracket must have at least one bound (low or high)",
+                source="probability",
+            )
         if self.low is not None and self.high is not None:
             if self.low >= self.high:
                 raise ValidationError(
@@ -48,10 +59,10 @@ class BracketDef:
     def key(self) -> str:
         """Human-readable bracket key for JSONB storage.
 
-        Examples: '(-inf, 65.0)', '[65.0, 66.0)', '[75.0, inf)'
+        Examples: '(-inf, 65)', '[65, 66)', '[75, inf)'
         """
-        low_str = f"{float(self.low)}" if self.low is not None else "-inf"
-        high_str = f"{float(self.high)}" if self.high is not None else "inf"
+        low_str = str(self.low) if self.low is not None else "-inf"
+        high_str = str(self.high) if self.high is not None else "inf"
         left = "(" if self.low is None else "["
         return f"{left}{low_str}, {high_str})"
 
@@ -73,7 +84,7 @@ def compute_ensemble_mean(temps: list[Decimal]) -> Decimal:
             "Cannot compute ensemble mean from empty temperature list",
             source="probability",
         )
-    return sum(temps) / len(temps)
+    return sum(temps, Decimal("0")) / len(temps)
 
 
 def compute_ensemble_std(
@@ -137,9 +148,14 @@ def bracket_probability(
     Raises:
         PredictionError: If std <= 0.
     """
-    if std <= 0:
+    if not math.isfinite(mean):
         raise PredictionError(
-            f"Standard deviation must be positive, got {std}",
+            f"mean must be finite, got {mean}",
+            source="probability",
+        )
+    if not math.isfinite(std) or std <= 0:
+        raise PredictionError(
+            f"Standard deviation must be finite and positive, got {std}",
             source="probability",
         )
 
@@ -197,14 +213,18 @@ def verify_probability_sum(
     """Verify that bracket probabilities sum to approximately 1.0.
 
     Args:
-        probs: Dict of bracket_key → probability.
-        tolerance: Maximum allowed deviation from 1.0.
+        probs: Non-empty dict of bracket_key → probability.
+        tolerance: Maximum allowed deviation from 1.0 (must be in (0, 1)).
 
     Returns:
         True if sum is within tolerance of 1.0.
+        False if probs is empty (empty set cannot sum to 1.0).
     """
     if not probs:
-        return True
+        return False
+
+    if tolerance <= 0 or tolerance >= 1:
+        raise ValueError(f"tolerance must be in (0, 1), got {tolerance}")
 
     total = sum(probs.values())
     return abs(total - 1.0) <= tolerance
@@ -257,6 +277,15 @@ def build_probability_distribution(
         )
 
     prob_sum = sum(bracket_probs.values()) if bracket_probs else 0.0
+
+    # Validate source_temps values are finite
+    for source_name, temp_val in source_temps.items():
+        temp_f = float(temp_val)
+        if not math.isfinite(temp_f):
+            raise PredictionError(
+                f"Source '{source_name}' has non-finite temperature: {temp_val}",
+                source="probability",
+            )
 
     return {
         "brackets": bracket_probs,

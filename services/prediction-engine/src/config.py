@@ -89,14 +89,14 @@ class PredictionConfig:
                 f"Risk weights must sum to 1.0, got {weight_sum}"
             )
 
-        if self.gap_threshold <= 0:
+        if self.gap_threshold <= 0 or self.gap_threshold > 1:
             raise ValueError(
-                f"gap_threshold must be positive, got {self.gap_threshold}"
+                f"gap_threshold must be in (0, 1], got {self.gap_threshold}"
             )
 
-        if self.min_ev_threshold <= 0:
+        if self.min_ev_threshold <= 0 or self.min_ev_threshold > 1:
             raise ValueError(
-                f"min_ev_threshold must be positive, got {self.min_ev_threshold}"
+                f"min_ev_threshold must be in (0, 1], got {self.min_ev_threshold}"
             )
 
         if self.min_sources_required < 1:
@@ -128,40 +128,53 @@ class PredictionConfig:
         }
 
 
+def _env_str(name: str, default: str) -> str:
+    """Read a string from an environment variable, or return the default."""
+    return os.environ.get(name, default)
+
+
 def load_prediction_config() -> PredictionConfig:
-    """Load prediction config from environment variables with defaults."""
+    """Load prediction config from environment variables with defaults.
+
+    Uses PredictionConfig field defaults as the single source of truth.
+    Each field can be overridden via PREDICTION_<FIELD_NAME> env vars.
+    """
+    defaults = PredictionConfig()
     return PredictionConfig(
         gap_threshold=_env_decimal(
-            "PREDICTION_GAP_THRESHOLD", Decimal("0.20")
+            "PREDICTION_GAP_THRESHOLD", defaults.gap_threshold
         ),
         min_ev_threshold=_env_decimal(
-            "PREDICTION_MIN_EV_THRESHOLD", Decimal("0.08")
+            "PREDICTION_MIN_EV_THRESHOLD", defaults.min_ev_threshold
         ),
         risk_weight_forecast_spread=_env_decimal(
-            "PREDICTION_RISK_WEIGHT_FORECAST_SPREAD", Decimal("0.25")
+            "PREDICTION_RISK_WEIGHT_FORECAST_SPREAD", defaults.risk_weight_forecast_spread
         ),
         risk_weight_source_agreement=_env_decimal(
-            "PREDICTION_RISK_WEIGHT_SOURCE_AGREEMENT", Decimal("0.20")
+            "PREDICTION_RISK_WEIGHT_SOURCE_AGREEMENT", defaults.risk_weight_source_agreement
         ),
         risk_weight_city_accuracy=_env_decimal(
-            "PREDICTION_RISK_WEIGHT_CITY_ACCURACY", Decimal("0.15")
+            "PREDICTION_RISK_WEIGHT_CITY_ACCURACY", defaults.risk_weight_city_accuracy
         ),
         risk_weight_liquidity=_env_decimal(
-            "PREDICTION_RISK_WEIGHT_LIQUIDITY", Decimal("0.10")
+            "PREDICTION_RISK_WEIGHT_LIQUIDITY", defaults.risk_weight_liquidity
         ),
         risk_weight_bracket_edge=_env_decimal(
-            "PREDICTION_RISK_WEIGHT_BRACKET_EDGE", Decimal("0.15")
+            "PREDICTION_RISK_WEIGHT_BRACKET_EDGE", defaults.risk_weight_bracket_edge
         ),
         risk_weight_lead_time=_env_decimal(
-            "PREDICTION_RISK_WEIGHT_LEAD_TIME", Decimal("0.15")
+            "PREDICTION_RISK_WEIGHT_LEAD_TIME", defaults.risk_weight_lead_time
+        ),
+        model_version=_env_str(
+            "PREDICTION_MODEL_VERSION", defaults.model_version
         ),
         min_sources_required=_env_int(
-            "PREDICTION_MIN_SOURCES_REQUIRED", 2
+            "PREDICTION_MIN_SOURCES_REQUIRED", defaults.min_sources_required
         ),
         std_dev_floor=_env_decimal(
-            "PREDICTION_STD_DEV_FLOOR", Decimal("1.50")
+            "PREDICTION_STD_DEV_FLOOR", defaults.std_dev_floor
         ),
         probability_sum_tolerance=_env_decimal(
-            "PREDICTION_PROBABILITY_SUM_TOLERANCE", Decimal("0.01")
+            "PREDICTION_PROBABILITY_SUM_TOLERANCE", defaults.probability_sum_tolerance
         ),
     )

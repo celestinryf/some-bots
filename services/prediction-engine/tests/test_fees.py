@@ -101,6 +101,14 @@ class TestKalshiTakerFee:
         with pytest.raises(ValueError, match="between 0 and 1"):
             kalshi_taker_fee(1, Decimal("1.50"))
 
+    def test_float_contracts_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="int"):
+            kalshi_taker_fee(1.5, Decimal("0.50"))  # type: ignore[arg-type]
+
+    def test_float_price_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="Decimal"):
+            kalshi_taker_fee(1, 0.50)  # type: ignore[arg-type]
+
 
 # ---------------------------------------------------------------------------
 # expected_value — parameterized with hand-computed values
@@ -164,3 +172,29 @@ class TestExpectedValue:
     def test_invalid_negative_fee(self) -> None:
         with pytest.raises(ValueError, match="fee"):
             expected_value(Decimal("0.50"), Decimal("0.50"), Decimal("-0.01"))
+
+    def test_invalid_cost_above_one(self) -> None:
+        with pytest.raises(ValueError, match="cost"):
+            expected_value(Decimal("0.50"), Decimal("1.50"), Decimal("0.02"))
+
+    def test_float_model_prob_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="Decimal"):
+            expected_value(0.5, Decimal("0.50"), Decimal("0.02"))  # type: ignore[arg-type]
+
+    def test_float_cost_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="Decimal"):
+            expected_value(Decimal("0.5"), 0.50, Decimal("0.02"))  # type: ignore[arg-type]
+
+    def test_float_fee_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="Decimal"):
+            expected_value(Decimal("0.5"), Decimal("0.50"), 0.02)  # type: ignore[arg-type]
+
+    def test_ev_near_max_cost(self) -> None:
+        # prob=1.0, cost=0.99, fee=0.01 → EV = 1.00 - 0.99 - 0.01 = 0.00
+        result = expected_value(Decimal("1.00"), Decimal("0.99"), Decimal("0.01"))
+        assert result == Decimal("0.00")
+
+    def test_ev_near_min_cost(self) -> None:
+        # prob=0.0, cost=0.01, fee=0.01 → EV = 0.00 - 0.01 - 0.01 = -0.02
+        result = expected_value(Decimal("0.00"), Decimal("0.01"), Decimal("0.01"))
+        assert result == Decimal("-0.02")

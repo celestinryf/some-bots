@@ -473,12 +473,20 @@ class KalshiClient:
             try:
                 markets = _fetch_markets(self._client, tickers=batch)
             except ResourceNotFoundError:
-                logger.warning(
-                    "kalshi_snapshot_batch_not_found",
-                    batch=batch,
-                    correlation_id=correlation_id,
-                )
-                continue
+                # Batch contains an unknown ticker — retry individually
+                # so one bad ticker doesn't block the entire batch.
+                markets = []
+                for ticker in batch:
+                    try:
+                        markets.extend(
+                            _fetch_markets(self._client, tickers=[ticker])
+                        )
+                    except ResourceNotFoundError:
+                        logger.warning(
+                            "kalshi_snapshot_ticker_not_found",
+                            ticker=ticker,
+                            correlation_id=correlation_id,
+                        )
             except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
                 raise KalshiApiError(
                     f"Failed to fetch market snapshots: {exc}",
@@ -540,12 +548,20 @@ class KalshiClient:
             try:
                 markets = _fetch_markets(self._client, tickers=batch)
             except ResourceNotFoundError:
-                logger.warning(
-                    "kalshi_settlement_batch_not_found",
-                    batch=batch,
-                    correlation_id=correlation_id,
-                )
-                continue
+                # Batch contains an unknown ticker — retry individually
+                # so one bad ticker doesn't block the entire batch.
+                markets = []
+                for ticker in batch:
+                    try:
+                        markets.extend(
+                            _fetch_markets(self._client, tickers=[ticker])
+                        )
+                    except ResourceNotFoundError:
+                        logger.warning(
+                            "kalshi_settlement_ticker_not_found",
+                            ticker=ticker,
+                            correlation_id=correlation_id,
+                        )
             except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
                 raise KalshiApiError(
                     f"Failed to check settlements: {exc}",

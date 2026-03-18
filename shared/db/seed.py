@@ -22,6 +22,10 @@ from shared.db.session import get_session
 logger = get_logger("db-seed")
 
 
+class _DryRunRollback(Exception):
+    """Raised inside get_session() to trigger rollback instead of commit."""
+
+
 def seed_cities(*, dry_run: bool = False) -> tuple[int, int]:
     """Upsert all cities from CITIES config into the database.
 
@@ -31,48 +35,51 @@ def seed_cities(*, dry_run: bool = False) -> tuple[int, int]:
     inserted = 0
     updated = 0
 
-    with get_session() as session:
-        existing = {
-            city.kalshi_ticker_prefix: city
-            for city in session.execute(select(City)).scalars().all()
-        }
+    try:
+        with get_session() as session:
+            existing = {
+                city.kalshi_ticker_prefix: city
+                for city in session.execute(select(City)).scalars().all()
+            }
 
-        for code, cfg in CITIES.items():
-            db_city = existing.get(code)
+            for code, cfg in CITIES.items():
+                db_city = existing.get(code)
 
-            if db_city is None:
-                if not dry_run:
-                    session.add(City(
-                        name=cfg.name,
-                        kalshi_ticker_prefix=cfg.kalshi_ticker_code,
-                        nws_station_id=cfg.nws_station_id,
-                        timezone=cfg.timezone,
-                        lat=cfg.lat,
-                        lon=cfg.lon,
-                    ))
-                inserted += 1
-                logger.info("insert_city", city=cfg.name, code=code, dry_run=dry_run)
-            else:
-                changed = False
-                for field, attr in [
-                    ("name", "name"),
-                    ("nws_station_id", "nws_station_id"),
-                    ("timezone", "timezone"),
-                    ("lat", "lat"),
-                    ("lon", "lon"),
-                ]:
-                    new_val = getattr(cfg, field)
-                    if getattr(db_city, attr) != new_val:
-                        if not dry_run:
-                            setattr(db_city, attr, new_val)
-                        changed = True
+                if db_city is None:
+                    if not dry_run:
+                        session.add(City(
+                            name=cfg.name,
+                            kalshi_ticker_prefix=cfg.kalshi_ticker_code,
+                            nws_station_id=cfg.nws_station_id,
+                            timezone=cfg.timezone,
+                            lat=cfg.lat,
+                            lon=cfg.lon,
+                        ))
+                    inserted += 1
+                    logger.info("insert_city", city=cfg.name, code=code, dry_run=dry_run)
+                else:
+                    changed = False
+                    for field, attr in [
+                        ("name", "name"),
+                        ("nws_station_id", "nws_station_id"),
+                        ("timezone", "timezone"),
+                        ("lat", "lat"),
+                        ("lon", "lon"),
+                    ]:
+                        new_val = getattr(cfg, field)
+                        if getattr(db_city, attr) != new_val:
+                            if not dry_run:
+                                setattr(db_city, attr, new_val)
+                            changed = True
 
-                if changed:
-                    updated += 1
-                    logger.info("update_city", city=cfg.name, code=code, dry_run=dry_run)
+                    if changed:
+                        updated += 1
+                        logger.info("update_city", city=cfg.name, code=code, dry_run=dry_run)
 
-        if dry_run:
-            session.rollback()
+            if dry_run:
+                raise _DryRunRollback()
+    except _DryRunRollback:
+        pass  # get_session() rolled back the transaction
 
     logger.info("seed_complete", inserted=inserted, updated=updated, dry_run=dry_run)
     return inserted, updated

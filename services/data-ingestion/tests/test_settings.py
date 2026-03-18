@@ -30,11 +30,17 @@ class TestSettingsDefaults:
 class TestDatabaseUrl:
     def test_database_url_format(self):
         s = Settings(db_user="testuser", db_password="testpass", db_host="localhost", db_port=5432, db_name="testdb")
-        assert s.database_url == "postgresql://testuser:testpass@localhost:5432/testdb"
+        url = s.database_url
+        assert url.render_as_string(hide_password=False) == "postgresql://testuser:testpass@localhost:5432/testdb"
+
+    def test_database_url_redacts_password(self):
+        s = Settings(db_user="u", db_password="secret", db_host="h", db_port=5432, db_name="d")
+        assert "secret" not in str(s.database_url)
 
     def test_database_url_with_ssl(self):
         s = Settings(db_user="u", db_password="p", db_host="h", db_port=5432, db_name="d")
-        assert s.database_url_with_ssl == "postgresql://u:p@h:5432/d?sslmode=require"
+        url = s.database_url_with_ssl
+        assert url.render_as_string(hide_password=False) == "postgresql://u:p@h:5432/d?sslmode=require"
 
 
 class TestIsProduction:
@@ -50,6 +56,8 @@ class TestIsProduction:
             pirate_weather_api_key="pw-key",
             openweather_api_key="owm-key",
             nws_user_agent="(test, test@test.com)",
+            kalshi_api_key_id="kalshi-key-id",
+            kalshi_key_path="./secrets/kalshi.pem",
         )
         assert s.is_production is True
 
@@ -182,6 +190,8 @@ class TestProductionValidation:
             pirate_weather_api_key="pw-key",
             openweather_api_key="owm-key",
             nws_user_agent="(test, test@test.com)",
+            kalshi_api_key_id="kalshi-key-id",
+            kalshi_key_path="./secrets/kalshi.pem",
         )
         assert s.is_production is True
 
@@ -197,6 +207,20 @@ class TestProductionValidation:
                 visual_crossing_api_key="vc-key",
                 pirate_weather_api_key="pw-key",
                 nws_user_agent="(test, test@test.com)",
+                kalshi_api_key_id="kalshi-key-id",
+                kalshi_key_path="./secrets/kalshi.pem",
             )
         # Should NOT list the ones that were provided
         assert "db_password" not in str(exc_info.value)
+
+    def test_production_missing_kalshi_credentials_raises(self) -> None:
+        with pytest.raises(ValueError, match="kalshi_api_key_id") as exc_info:
+            Settings(
+                environment="production",
+                db_password="secret",
+                visual_crossing_api_key="vc-key",
+                pirate_weather_api_key="pw-key",
+                openweather_api_key="owm-key",
+                nws_user_agent="(test, test@test.com)",
+            )
+        assert "kalshi_key_path" in str(exc_info.value)

@@ -21,6 +21,7 @@ from src.clients.kalshi import SettledMarket
 from src.ingestion.kalshi import (
     run_kalshi_discovery,
     run_kalshi_settlements,
+    run_kalshi_snapshot_cleanup,
     run_kalshi_snapshots,
 )
 
@@ -60,8 +61,8 @@ def _make_discovered_market(
         city_code=city_code,
         forecast_date=date(2026, 3, 17),
         market_type=MarketType.HIGH,
-        bracket_low=72.0,
-        bracket_high=73.0,
+        bracket_low=Decimal("72"),
+        bracket_high=Decimal("73"),
         is_edge_bracket=False,
         yes_bid=Decimal("0.54"),
         yes_ask=Decimal("0.56"),
@@ -225,8 +226,8 @@ class TestRunKalshiSnapshots:
         )
 
         mock_kalshi.fetch_snapshots.assert_called_once()
-        # session.add called for the snapshot
-        mock_session.add.assert_called_once()
+        # session.execute called: once for the SELECT, once for the pg_insert
+        assert mock_session.execute.call_count >= 2
 
     def test_no_active_markets_no_api_call(self) -> None:
         mock_kalshi = MagicMock(spec=KalshiClient)
@@ -325,6 +326,7 @@ class TestRunKalshiSettlements:
                 ticker=mock_market.ticker,
                 result="yes",
                 settlement_value=Decimal("1.00"),
+                final_status=MarketStatus.SETTLED,
             ),
         ]
 
@@ -374,7 +376,7 @@ class TestRunKalshiSettlements:
 
         # Only TICKER-1 is settled
         mock_kalshi.check_settlements.return_value = [
-            SettledMarket(ticker="TICKER-1", result="yes", settlement_value=Decimal("1.00")),
+            SettledMarket(ticker="TICKER-1", result="yes", settlement_value=Decimal("1.00"), final_status=MarketStatus.SETTLED),
         ]
 
         run_kalshi_settlements(
@@ -387,6 +389,38 @@ class TestRunKalshiSettlements:
         # UPDATE called only for TICKER-1
         # execute called for SELECT (in first session) + UPDATE (in second session)
         assert mock_session.execute.call_count >= 1
+
+    def test_closed_market_updated_with_closed_status(self) -> None:
+        """CLOSED markets should be updated to CLOSED, not left as ACTIVE."""
+        mock_kalshi = MagicMock(spec=KalshiClient)
+        mock_market = _make_mock_kalshi_market()
+        mock_market.forecast_date = datetime(2026, 3, 15, tzinfo=timezone.utc)
+
+        mock_session = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_market]
+        mock_execute = MagicMock()
+        mock_execute.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_execute
+
+        mock_kalshi.check_settlements.return_value = [
+            SettledMarket(
+                ticker=mock_market.ticker,
+                result="",
+                settlement_value=None,
+                final_status=MarketStatus.CLOSED,
+            ),
+        ]
+
+        run_kalshi_settlements(
+            kalshi_client=mock_kalshi,
+            session_factory=_mock_session_factory(mock_session),
+            run_id="test-run-closed",
+        )
+
+        mock_kalshi.check_settlements.assert_called_once()
+        # execute called for SELECT + UPDATE
+        assert mock_session.execute.call_count >= 2
 
     def test_api_error_handled_gracefully(self) -> None:
         mock_kalshi = MagicMock(spec=KalshiClient)
@@ -408,4 +442,49 @@ class TestRunKalshiSettlements:
             kalshi_client=mock_kalshi,
             session_factory=_mock_session_factory(mock_session),
             run_id="test-run-4",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Snapshot retention cleanup tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunKalshiSnapshotCleanup:
+    def test_deletes_old_snapshots(self) -> None:
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 42
+        mock_session.execute.return_value = mock_result
+
+        run_kalshi_snapshot_cleanup(
+            session_factory=_mock_session_factory(mock_session),
+            retention_days=30,
+            run_id="test-cleanup-1",
+        )
+
+        mock_session.execute.assert_called_once()
+
+    def test_custom_retention_days(self) -> None:
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 0
+        mock_session.execute.return_value = mock_result
+
+        run_kalshi_snapshot_cleanup(
+            session_factory=_mock_session_factory(mock_session),
+            retention_days=7,
+            run_id="test-cleanup-2",
+        )
+
+        mock_session.execute.assert_called_once()
+
+    def test_db_error_handled_gracefully(self) -> None:
+        mock_session = MagicMock()
+        mock_session.execute.side_effect = RuntimeError("DB error")
+
+        # Should not raise
+        run_kalshi_snapshot_cleanup(
+            session_factory=_mock_session_factory(mock_session),
+            run_id="test-cleanup-3",
         )

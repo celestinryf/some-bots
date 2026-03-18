@@ -329,15 +329,16 @@ class TestVisualCrossingClient:
     @pytest.fixture()
     def expected_url(self, forecast_date: datetime) -> str:
         date_str = forecast_date.strftime("%Y-%m-%d")
-        return (
-            f"{_VC_BASE}/40.7,-74.0/{date_str}"
-            f"?key=test-vc-key&unitGroup=us&include=days&elements=datetime,tempmax,tempmin"
-        )
+        return f"{_VC_BASE}/40.7,-74.0/{date_str}"
+
+    @pytest.fixture()
+    def expected_params(self) -> dict[str, str]:
+        return {"key": "test-vc-key", "unitGroup": "us", "include": "days", "elements": "datetime,tempmax,tempmin"}
 
     @respx.mock
-    def test_happy_path_full_assertions(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str) -> None:
+    def test_happy_path_full_assertions(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str, expected_params: dict[str, str]) -> None:
         fixture = _load_fixture("visual_crossing_forecast.json")
-        respx.get(expected_url).mock(
+        respx.get(expected_url, params=expected_params).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
@@ -352,8 +353,8 @@ class TestVisualCrossingClient:
         assert result.issued_at >= datetime.now(timezone.utc) - timedelta(seconds=60)
 
     @respx.mock
-    def test_missing_days_raises(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str) -> None:
-        respx.get(expected_url).mock(
+    def test_missing_days_raises(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str, expected_params: dict[str, str]) -> None:
+        respx.get(expected_url, params=expected_params).mock(
             return_value=httpx.Response(200, json={})
         )
 
@@ -361,8 +362,8 @@ class TestVisualCrossingClient:
             client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
 
     @respx.mock
-    def test_empty_days_raises(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str) -> None:
-        respx.get(expected_url).mock(
+    def test_empty_days_raises(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str, expected_params: dict[str, str]) -> None:
+        respx.get(expected_url, params=expected_params).mock(
             return_value=httpx.Response(200, json={"days": []})
         )
 
@@ -370,19 +371,21 @@ class TestVisualCrossingClient:
             client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
 
     @respx.mock
-    def test_api_key_in_url(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str) -> None:
+    def test_api_key_passed_as_param(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str, expected_params: dict[str, str]) -> None:
+        """API key is passed via query params, not embedded in the URL path."""
         fixture = _load_fixture("visual_crossing_forecast.json")
-        route = respx.get(expected_url).mock(
+        route = respx.get(expected_url, params=expected_params).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
         client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
-        assert "key=test-vc-key" in str(route.calls[0].request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        request_url = str(route.calls[0].request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        assert "key=test-vc-key" in request_url
 
     @respx.mock
-    def test_high_only(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str) -> None:
+    def test_high_only(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str, expected_params: dict[str, str]) -> None:
         """tempmin missing → result has temp_low=None."""
-        respx.get(expected_url).mock(
+        respx.get(expected_url, params=expected_params).mock(
             return_value=httpx.Response(200, json={
                 "days": [{"datetime": "2026-03-16", "tempmax": 73.2}]
             })
@@ -397,7 +400,8 @@ class TestVisualCrossingClient:
 # PirateWeather Client Tests
 # ===========================================================================
 
-_PW_URL = "https://api.pirateweather.net/forecast/test-pw-key/40.7,-74.0?units=us&exclude=minutely,hourly,alerts"
+_PW_URL = "https://api.pirateweather.net/forecast/key/40.7,-74.0"
+_PW_PARAMS: dict[str, str] = {"units": "us", "exclude": "minutely,hourly,alerts"}
 
 
 class TestPirateWeatherClient:
@@ -417,7 +421,7 @@ class TestPirateWeatherClient:
     @respx.mock
     def test_happy_path_full_assertions(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
         fixture = _load_fixture("pirate_weather_forecast.json")
-        respx.get(_PW_URL).mock(
+        respx.get(_PW_URL, params=_PW_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
@@ -436,7 +440,7 @@ class TestPirateWeatherClient:
     def test_issued_at_from_currently_time(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
         """issued_at parsed from currently.time server timestamp."""
         fixture = _load_fixture("pirate_weather_forecast.json")
-        respx.get(_PW_URL).mock(
+        respx.get(_PW_URL, params=_PW_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
@@ -451,7 +455,7 @@ class TestPirateWeatherClient:
         """When currently.time is missing, falls back to now()."""
         fixture = _load_fixture("pirate_weather_forecast.json")
         fixture.pop("currently", None)
-        respx.get(_PW_URL).mock(
+        respx.get(_PW_URL, params=_PW_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
@@ -461,7 +465,7 @@ class TestPirateWeatherClient:
 
     @respx.mock
     def test_missing_daily_data_raises(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
-        respx.get(_PW_URL).mock(
+        respx.get(_PW_URL, params=_PW_PARAMS).mock(
             return_value=httpx.Response(200, json={})
         )
 
@@ -470,7 +474,7 @@ class TestPirateWeatherClient:
 
     @respx.mock
     def test_empty_daily_data_raises(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
-        respx.get(_PW_URL).mock(
+        respx.get(_PW_URL, params=_PW_PARAMS).mock(
             return_value=httpx.Response(200, json={"daily": {"data": []}})
         )
 
@@ -481,30 +485,37 @@ class TestPirateWeatherClient:
     def test_raises_when_no_matching_date(self, client: PirateWeatherClient) -> None:
         """When no day matches target date, raises WeatherApiError."""
         fixture = _load_fixture("pirate_weather_forecast.json")
-        respx.get(_PW_URL).mock(
+        respx.get(_PW_URL, params=_PW_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
         far_future = datetime(2027, 1, 1, tzinfo=timezone.utc)
-        with pytest.raises(WeatherApiError, match="Target date"):
+        with pytest.raises(WeatherApiError, match="default window covers"):
             client.fetch_forecast("NYC", 40.7, -74.0, far_future)
 
     @respx.mock
-    def test_api_key_in_url(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
+    def test_api_key_passed_as_header(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
+        """API key is passed via header, not in the URL path or query string."""
         fixture = _load_fixture("pirate_weather_forecast.json")
-        route = respx.get(_PW_URL).mock(
+        route = respx.get(_PW_URL, params=_PW_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
         client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
-        assert "test-pw-key" in str(route.calls[0].request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        request = route.calls[0].request  # pyright: ignore[reportUnknownMemberType]
+        request_url = str(request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        # Key must be in headers, NOT in URL path or query string
+        assert request.headers.get("apikey") == "test-pw-key"  # pyright: ignore[reportUnknownMemberType]
+        assert "/test-pw-key/" not in request_url
+        assert "apikey=" not in request_url
 
 
 # ===========================================================================
 # OpenWeatherMap Client Tests
 # ===========================================================================
 
-_OWM_URL = "https://api.openweathermap.org/data/2.5/forecast?lat=40.7&lon=-74.0&appid=test-owm-key&units=imperial"
+_OWM_URL = "https://api.openweathermap.org/data/2.5/forecast"
+_OWM_PARAMS: dict[str, str] = {"lat": "40.7", "lon": "-74.0", "appid": "test-owm-key", "units": "imperial"}
 
 
 class TestOpenWeatherMapClient:
@@ -523,7 +534,7 @@ class TestOpenWeatherMapClient:
     @respx.mock
     def test_happy_path_full_assertions(self, client: OpenWeatherMapClient, forecast_date: datetime) -> None:
         fixture = _load_fixture("openweathermap_forecast.json")
-        respx.get(_OWM_URL).mock(
+        respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
@@ -543,7 +554,7 @@ class TestOpenWeatherMapClient:
     def test_raw_response_trimmed_to_target_date(self, client: OpenWeatherMapClient, forecast_date: datetime) -> None:
         """raw_response only contains intervals for the target date."""
         fixture = _load_fixture("openweathermap_forecast.json")
-        respx.get(_OWM_URL).mock(
+        respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
@@ -557,7 +568,7 @@ class TestOpenWeatherMapClient:
 
     @respx.mock
     def test_missing_list_raises(self, client: OpenWeatherMapClient, forecast_date: datetime) -> None:
-        respx.get(_OWM_URL).mock(
+        respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json={})
         )
 
@@ -566,7 +577,7 @@ class TestOpenWeatherMapClient:
 
     @respx.mock
     def test_empty_list_raises(self, client: OpenWeatherMapClient, forecast_date: datetime) -> None:
-        respx.get(_OWM_URL).mock(
+        respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json={"list": []})
         )
 
@@ -577,7 +588,7 @@ class TestOpenWeatherMapClient:
     def test_no_matching_date_returns_none_temps(self, client: OpenWeatherMapClient) -> None:
         """If no intervals match the target date, temps are None → ValidationError."""
         fixture = _load_fixture("openweathermap_forecast.json")
-        respx.get(_OWM_URL).mock(
+        respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
@@ -596,7 +607,7 @@ class TestOpenWeatherMapClient:
                 {"dt_txt": "2026-03-16 15:00:00", "main": {"temp_max": 70.0, "temp_min": 58.0}},
             ]
         }
-        respx.get(_OWM_URL).mock(
+        respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json=data)
         )
 
@@ -612,7 +623,7 @@ class TestOpenWeatherMapClient:
                 {"dt_txt": "2026-03-16 21:00:00", "main": {"temp_max": 62.0, "temp_min": 58.0}},
             ]
         }
-        respx.get(_OWM_URL).mock(
+        respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json=data)
         )
 
@@ -630,7 +641,7 @@ class TestOpenWeatherMapClient:
                 {"dt_txt": "2026-03-16 12:00:00", "main": {"temp_max": 72.0, "temp_min": 55.0}},
             ]
         }
-        respx.get(_OWM_URL).mock(
+        respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json=data)
         )
 
@@ -647,7 +658,7 @@ class TestOpenWeatherMapClient:
                 {"dt_txt": "2026-03-16 12:00:00", "main": {"temp_max": 72.0, "temp_min": 55.0}},
             ]
         }
-        respx.get(_OWM_URL).mock(
+        respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json=data)
         )
 
@@ -656,11 +667,51 @@ class TestOpenWeatherMapClient:
         assert result.temp_low == 55.0
 
     @respx.mock
-    def test_api_key_in_url(self, client: OpenWeatherMapClient, forecast_date: datetime) -> None:
+    def test_api_key_passed_as_param(self, client: OpenWeatherMapClient, forecast_date: datetime) -> None:
+        """API key is passed via query params, not embedded in the URL path."""
         fixture = _load_fixture("openweathermap_forecast.json")
-        route = respx.get(_OWM_URL).mock(
+        route = respx.get(_OWM_URL, params=_OWM_PARAMS).mock(
             return_value=httpx.Response(200, json=fixture)
         )
 
         client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
-        assert "appid=test-owm-key" in str(route.calls[0].request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        request_url = str(route.calls[0].request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        assert "appid=test-owm-key" in request_url
+
+    @respx.mock
+    def test_local_timezone_captures_cross_utc_intervals(self, client: OpenWeatherMapClient) -> None:
+        """UTC intervals that fall on the local target date are included.
+
+        For LA (UTC-7 in March / PDT), 2026-03-16 local afternoon corresponds
+        to 2026-03-17 00:00 UTC. Without timezone-aware filtering, that
+        interval would be excluded, missing the afternoon high.
+        """
+        forecast_date = datetime(2026, 3, 16, tzinfo=timezone.utc)
+        data: dict[str, Any] = {
+            "list": [
+                # 2026-03-16 18:00 UTC = 2026-03-16 11:00 PDT (local Mar 16)
+                {"dt_txt": "2026-03-16 18:00:00", "main": {"temp_max": 70.0, "temp_min": 60.0}},
+                # 2026-03-16 21:00 UTC = 2026-03-16 14:00 PDT (local Mar 16)
+                {"dt_txt": "2026-03-16 21:00:00", "main": {"temp_max": 78.0, "temp_min": 65.0}},
+                # 2026-03-17 00:00 UTC = 2026-03-16 17:00 PDT (still local Mar 16!)
+                {"dt_txt": "2026-03-17 00:00:00", "main": {"temp_max": 75.0, "temp_min": 62.0}},
+                # 2026-03-17 03:00 UTC = 2026-03-16 20:00 PDT (still local Mar 16!)
+                {"dt_txt": "2026-03-17 03:00:00", "main": {"temp_max": 68.0, "temp_min": 58.0}},
+                # 2026-03-17 07:00 UTC = 2026-03-17 00:00 PDT (local Mar 17 — excluded)
+                {"dt_txt": "2026-03-17 07:00:00", "main": {"temp_max": 55.0, "temp_min": 50.0}},
+            ]
+        }
+        lax_params = {"lat": "34.05", "lon": "-118.24", "appid": "test-owm-key", "units": "imperial"}
+        respx.get(_OWM_URL, params=lax_params).mock(
+            return_value=httpx.Response(200, json=data)
+        )
+
+        result = client.fetch_forecast(
+            "LAX", 34.05, -118.24, forecast_date,
+            city_timezone="America/Los_Angeles",
+        )
+        # All 4 local Mar-16 intervals captured, including the cross-UTC ones
+        assert result.temp_high == 78.0  # max of [70, 78, 75, 68]
+        assert result.temp_low == 58.0   # min of [60, 65, 62, 58]
+        # raw_response should have 4 intervals, not 2
+        assert len(result.raw_response["list"]) == 4

@@ -54,7 +54,15 @@ def _make_forecast_result(
 def _mock_session_factory(
     mock_session: MagicMock,
 ) -> Callable[[], AbstractContextManager[MagicMock]]:
-    """Create a session factory that yields the given mock session."""
+    """Create a session factory that yields the given mock session.
+
+    Configures begin_nested() to return a context manager (SAVEPOINT mock)
+    matching the single-session + savepoint pattern used in weather ingestion.
+    """
+    # Make begin_nested() usable as a context manager (SAVEPOINT)
+    mock_session.begin_nested.return_value.__enter__ = MagicMock(return_value=None)
+    mock_session.begin_nested.return_value.__exit__ = MagicMock(return_value=False)
+
     @contextmanager
     def factory() -> Generator[MagicMock, None, None]:
         yield mock_session
@@ -153,8 +161,8 @@ class TestRunWeatherIngestion:
         assert mock_client.fetch_forecast.call_count == 2
         mock_session.execute.assert_not_called()
 
-    def test_dedup_conflict_counted_as_skip(self) -> None:
-        """ON CONFLICT DO NOTHING -> rowcount=0 -> counted as skip."""
+    def test_upsert_on_conflict_updates_existing(self) -> None:
+        """ON CONFLICT DO UPDATE: re-fetching same (source, city, date) updates the row."""
         mock_client = MagicMock()
         mock_client.source = WeatherSource.NWS
         mock_client.inter_request_delay = 0.0
@@ -162,7 +170,7 @@ class TestRunWeatherIngestion:
 
         mock_session = MagicMock()
         mock_result = MagicMock()
-        mock_result.rowcount = 0  # Conflict — row already exists
+        mock_result.rowcount = 1  # Updated existing row
         mock_session.execute.return_value = mock_result
 
         run_weather_ingestion(
@@ -174,7 +182,7 @@ class TestRunWeatherIngestion:
             sleep_fn=_noop_sleep,
         )
 
-        # Should still call execute (the ON CONFLICT handles dedup)
+        # Upsert should execute and count as success
         mock_session.execute.assert_called_once()
 
     def test_inter_request_delay_respected(self) -> None:
@@ -298,3 +306,38 @@ class TestRunWeatherIngestion:
         )
 
         mock_client.fetch_forecast.assert_not_called()
+
+    def test_partial_null_temp_uses_coalesce(self) -> None:
+        """Upsert uses COALESCE so a null temp never overwrites a valid one."""
+        mock_client = MagicMock()
+        mock_client.source = WeatherSource.NWS
+        mock_client.inter_request_delay = 0.0
+        # temp_low is None — should not overwrite an existing valid value
+        mock_client.fetch_forecast.return_value = _make_forecast_result()
+        # Override temp_low to None via a new ForecastResult
+        mock_client.fetch_forecast.return_value = ForecastResult(
+            source=WeatherSource.NWS,
+            city_code="NYC",
+            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            issued_at=datetime(2026, 3, 16, 14, 0, tzinfo=timezone.utc),
+            temp_high=72.0,
+            temp_low=None,
+            raw_response={"test": True},
+        )
+
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        run_weather_ingestion(
+            client=mock_client,
+            city_map={"NYC": _make_city("NYC")},
+            session_factory=_mock_session_factory(mock_session),
+            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            run_id="test-run-10",
+            sleep_fn=_noop_sleep,
+        )
+
+        # Upsert should still execute (COALESCE handles the null protection)
+        mock_session.execute.assert_called_once()

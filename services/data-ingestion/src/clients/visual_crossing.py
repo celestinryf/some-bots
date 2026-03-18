@@ -2,7 +2,7 @@
 Visual Crossing Weather API client.
 
 Timeline endpoint provides daily forecasts with explicit tempmax/tempmin.
-$35/mo plan. API key passed as query parameter.
+$35/mo plan. API key passed as query parameter (no header auth supported).
 """
 
 from datetime import datetime, timezone
@@ -34,12 +34,18 @@ class VisualCrossingClient(WeatherClient):
 
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:
         date_str = forecast_date.strftime("%Y-%m-%d")
-        return (
-            f"{_BASE_URL}/{lat},{lon}/{date_str}"
-            f"?key={self._api_key}&unitGroup=us&include=days&elements=datetime,tempmax,tempmin"
-        )
+        return f"{_BASE_URL}/{lat},{lon}/{date_str}"
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str]:
+        # Visual Crossing only supports API key via query param (no header auth).
+        return {
+            "key": self._api_key,
+            "unitGroup": "us",
+            "include": "days",
+            "elements": "datetime,tempmax,tempmin",
+        }
+
+    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
         """Parse Visual Crossing timeline response.
 
         Response has a `days` array with explicit `tempmax` and `tempmin`.
@@ -63,8 +69,20 @@ class VisualCrossingClient(WeatherClient):
 
         day = days[0]
 
+        expected_date = forecast_date.strftime("%Y-%m-%d")
+        if day.get("datetime") != expected_date:
+            raise WeatherApiError(
+                f"Visual Crossing returned unexpected date {day.get('datetime')!r} "
+                f"for city {city_code}, expected {expected_date}",
+                city=city_code,
+                source=self.source,
+            )
+
         return ParsedForecast(
             temp_high=self._to_optional_float(day.get("tempmax")),
             temp_low=self._to_optional_float(day.get("tempmin")),
+            # Visual Crossing does not expose a model-run timestamp; use fetch
+            # time as a best-effort proxy.  NWS and PirateWeather provide real
+            # issuance times.
             issued_at=datetime.now(timezone.utc),
         )

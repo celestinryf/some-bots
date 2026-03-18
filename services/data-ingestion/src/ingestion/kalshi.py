@@ -11,7 +11,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -78,61 +78,68 @@ def run_kalshi_discovery(
     skip_count = 0
     error_count = 0
 
-    for market in discovered:
-        city = city_map.get(market.city_code)
-        if city is None:
-            skip_count += 1
-            logger.debug(
-                "kalshi_market_unknown_city",
-                ticker=market.market_ticker,
-                city_code=market.city_code,
-                correlation_id=correlation_id,
-            )
-            continue
-
-        try:
-            forecast_dt = datetime(
-                market.forecast_date.year,
-                market.forecast_date.month,
-                market.forecast_date.day,
-                tzinfo=timezone.utc,
-            )
-
-            with session_factory() as session:
-                stmt = pg_insert(KalshiMarket).values(
-                    event_id=market.event_ticker,
-                    market_id=market.market_ticker,
+    with session_factory() as session:
+        for market in discovered:
+            city = city_map.get(market.city_code)
+            if city is None:
+                skip_count += 1
+                logger.debug(
+                    "kalshi_market_unknown_city",
                     ticker=market.market_ticker,
-                    city_id=city.id,
-                    forecast_date=forecast_dt,
-                    market_type=market.market_type,
-                    bracket_low=market.bracket_low,
-                    bracket_high=market.bracket_high,
-                    is_edge_bracket=market.is_edge_bracket,
-                    status=market.status,
-                ).on_conflict_do_update(
-                    index_elements=["ticker"],
-                    set_={
-                        "status": market.status,
-                        "bracket_low": market.bracket_low,
-                        "bracket_high": market.bracket_high,
-                        "is_edge_bracket": market.is_edge_bracket,
-                    },
+                    city_code=market.city_code,
+                    correlation_id=correlation_id,
                 )
-                session.execute(stmt)
+                continue
 
-            upsert_count += 1
+            try:
+                forecast_dt = datetime(
+                    market.forecast_date.year,
+                    market.forecast_date.month,
+                    market.forecast_date.day,
+                    tzinfo=timezone.utc,
+                )
 
-        except Exception as exc:
-            error_count += 1
-            logger.error(
-                "kalshi_discovery_market_error",
-                ticker=market.market_ticker,
-                error=str(exc),
-                error_type=type(exc).__name__,
-                correlation_id=correlation_id,
-                run_id=run_id,
-            )
+                # SAVEPOINT per market so a single failure doesn't poison
+                # the session and roll back the entire batch.
+                with session.begin_nested():
+                    stmt = pg_insert(KalshiMarket).values(
+                        event_id=market.event_ticker,
+                        market_id=market.market_ticker,
+                        ticker=market.market_ticker,
+                        city_id=city.id,
+                        forecast_date=forecast_dt,
+                        market_type=market.market_type,
+                        bracket_low=market.bracket_low,
+                        bracket_high=market.bracket_high,
+                        is_edge_bracket=market.is_edge_bracket,
+                        status=market.status,
+                    ).on_conflict_do_update(
+                        index_elements=["ticker"],
+                        set_={
+                            "event_id": market.event_ticker,
+                            "market_id": market.market_ticker,
+                            "status": market.status,
+                            "bracket_low": market.bracket_low,
+                            "bracket_high": market.bracket_high,
+                            "is_edge_bracket": market.is_edge_bracket,
+                            # Core INSERT bypasses ORM onupdate, so set explicitly
+                            "updated_at": datetime.now(timezone.utc),
+                        },
+                    )
+                    session.execute(stmt)
+
+                upsert_count += 1
+
+            except Exception as exc:
+                error_count += 1
+                logger.error(
+                    "kalshi_discovery_market_error",
+                    ticker=market.market_ticker,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    correlation_id=correlation_id,
+                    run_id=run_id,
+                )
 
     logger.info(
         "kalshi_discovery_complete",
@@ -173,7 +180,13 @@ def run_kalshi_snapshots(
     window_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     window_end = window_start + timedelta(days=2)
 
-    # Query active markets in the window
+    # Query active markets in the window.
+    # NOTE: This session closes before the Kalshi API call, and a second
+    # session opens for inserts. A market could be settled between the two
+    # sessions, causing a snapshot for a now-SETTLED market. This is an
+    # accepted trade-off: the settlement job eagerly deletes snapshots for
+    # settled markets, and using a single long-lived session would hold a
+    # DB connection idle during the external API call.
     with session_factory() as session:
         active_markets = (
             session.execute(
@@ -225,6 +238,8 @@ def run_kalshi_snapshots(
 
     insert_count = 0
     skip_count = 0
+    dedup_count = 0
+    error_count = 0
 
     with session_factory() as session:
         for snapshot in snapshots:
@@ -238,19 +253,38 @@ def run_kalshi_snapshots(
                 )
                 continue
 
-            session.add(
-                KalshiMarketSnapshot(
-                    market_id=db_market_id,  # type: ignore[arg-type]
-                    timestamp=snapshot.timestamp,
-                    yes_bid=snapshot.yes_bid,
-                    yes_ask=snapshot.yes_ask,
-                    no_bid=snapshot.no_bid,
-                    no_ask=snapshot.no_ask,
-                    volume=snapshot.volume,
-                    open_interest=snapshot.open_interest,
+            try:
+                # SAVEPOINT per snapshot so a single failure doesn't
+                # poison the session and roll back the entire batch.
+                with session.begin_nested():
+                    stmt = pg_insert(KalshiMarketSnapshot).values(
+                        market_id=db_market_id,
+                        timestamp=snapshot.timestamp,
+                        yes_bid=snapshot.yes_bid,
+                        yes_ask=snapshot.yes_ask,
+                        no_bid=snapshot.no_bid,
+                        no_ask=snapshot.no_ask,
+                        last_price=snapshot.last_price,
+                        volume=snapshot.volume,
+                        open_interest=snapshot.open_interest,
+                    ).on_conflict_do_nothing(
+                        constraint="uq_snapshot_market_time",
+                    )
+                    result = session.execute(stmt)
+                if (result.rowcount or 0) > 0:
+                    insert_count += 1
+                else:
+                    dedup_count += 1
+            except Exception as exc:
+                error_count += 1
+                logger.error(
+                    "kalshi_snapshot_insert_error",
+                    ticker=snapshot.ticker,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    correlation_id=correlation_id,
+                    run_id=run_id,
                 )
-            )
-            insert_count += 1
 
     logger.info(
         "kalshi_snapshots_complete",
@@ -258,6 +292,8 @@ def run_kalshi_snapshots(
         correlation_id=correlation_id,
         inserted=insert_count,
         skipped=skip_count,
+        duplicates=dedup_count,
+        errors=error_count,
         total_fetched=len(snapshots),
     )
 
@@ -334,36 +370,46 @@ def run_kalshi_settlements(
     update_count = 0
     error_count = 0
 
-    for settled in settled_markets:
-        try:
-            settlement_val = (
-                float(settled.settlement_value)
-                if settled.settlement_value is not None
-                else None
-            )
-
-            with session_factory() as session:
-                session.execute(
-                    update(KalshiMarket)
-                    .where(KalshiMarket.ticker == settled.ticker)
-                    .values(
-                        status=MarketStatus.SETTLED,
-                        settlement_value=settlement_val,
+    with session_factory() as session:
+        for settled in settled_markets:
+            try:
+                # SAVEPOINT per market so a single failure doesn't poison
+                # the session and roll back the entire batch.
+                with session.begin_nested():
+                    session.execute(
+                        update(KalshiMarket)
+                        .where(KalshiMarket.ticker == settled.ticker)
+                        .values(
+                            status=settled.final_status,
+                            settlement_value=settled.settlement_value,
+                            # Core UPDATE bypasses ORM onupdate, so set explicitly
+                            updated_at=datetime.now(timezone.utc),
+                        )
                     )
+                    # Eagerly purge snapshots for settled markets so they don't
+                    # linger until the 30-day retention cleanup.
+                    session.execute(
+                        delete(KalshiMarketSnapshot).where(
+                            KalshiMarketSnapshot.market_id.in_(
+                                select(KalshiMarket.id).where(
+                                    KalshiMarket.ticker == settled.ticker,
+                                )
+                            )
+                        )
+                    )
+
+                update_count += 1
+
+            except Exception as exc:
+                error_count += 1
+                logger.error(
+                    "kalshi_settlement_update_error",
+                    ticker=settled.ticker,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    correlation_id=correlation_id,
+                    run_id=run_id,
                 )
-
-            update_count += 1
-
-        except Exception as exc:
-            error_count += 1
-            logger.error(
-                "kalshi_settlement_update_error",
-                ticker=settled.ticker,
-                error=str(exc),
-                error_type=type(exc).__name__,
-                correlation_id=correlation_id,
-                run_id=run_id,
-            )
 
     logger.info(
         "kalshi_settlements_complete",
@@ -373,4 +419,80 @@ def run_kalshi_settlements(
         errors=error_count,
         total_checked=len(tickers),
         total_settled=len(settled_markets),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4. Snapshot Retention Cleanup
+# ---------------------------------------------------------------------------
+
+
+def run_kalshi_snapshot_cleanup(
+    *,
+    session_factory: Callable[[], AbstractContextManager[Session]],
+    retention_days: int = 30,
+    run_id: str,
+) -> None:
+    """Delete KalshiMarketSnapshot rows older than the retention window.
+
+    Prevents unbounded accumulation of 5-minute snapshot data.
+
+    Args:
+        session_factory: Callable returning a context-managed DB session.
+        retention_days: Number of days of snapshots to retain. Default 30.
+        run_id: Shared ID for the entire ingestion cycle.
+    """
+    correlation_id = generate_correlation_id()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+    logger.info(
+        "kalshi_snapshot_cleanup_start",
+        run_id=run_id,
+        correlation_id=correlation_id,
+        retention_days=retention_days,
+        cutoff=str(cutoff),
+    )
+
+    # Delete in batches to limit lock contention and WAL generation.
+    # A single unbounded DELETE could block concurrent snapshot INSERTs.
+    batch_size = 10_000
+    deleted_count = 0
+
+    try:
+        while True:
+            with session_factory() as session:
+                # Subquery to select a bounded batch of IDs for deletion.
+                batch_ids = (
+                    select(KalshiMarketSnapshot.id)
+                    .where(KalshiMarketSnapshot.timestamp < cutoff)
+                    .limit(batch_size)
+                    .subquery()
+                )
+                result = session.execute(
+                    delete(KalshiMarketSnapshot).where(
+                        KalshiMarketSnapshot.id.in_(select(batch_ids))
+                    )
+                )
+                batch_deleted = result.rowcount or 0  # type: ignore[union-attr]
+                deleted_count += batch_deleted
+
+            if batch_deleted < batch_size:
+                break
+
+    except Exception as exc:
+        logger.error(
+            "kalshi_snapshot_cleanup_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            correlation_id=correlation_id,
+            run_id=run_id,
+            deleted_before_failure=deleted_count,
+        )
+        return
+
+    logger.info(
+        "kalshi_snapshot_cleanup_complete",
+        run_id=run_id,
+        correlation_id=correlation_id,
+        deleted=deleted_count,
     )

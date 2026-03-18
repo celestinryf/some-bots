@@ -26,6 +26,8 @@ import structlog
 # If any key contains one of these substrings, the value is replaced with [REDACTED].
 _SENSITIVE_SUBSTRINGS: tuple[str, ...] = (
     "api_key",
+    "apikey",      # PirateWeather header (no underscore)
+    "appid",       # OpenWeatherMap query param
     "password",
     "token",
     "authorization",

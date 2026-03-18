@@ -47,7 +47,7 @@ def get_session_factory() -> sessionmaker[Session]:
     """Return the shared session factory. Creates it on first call."""
     global _session_factory
     if _session_factory is None:
-        _session_factory = sessionmaker(bind=get_engine(), expire_on_commit=False)
+        _session_factory = sessionmaker(get_engine(), expire_on_commit=False)
     return _session_factory
 
 

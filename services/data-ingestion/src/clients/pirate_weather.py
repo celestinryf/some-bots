@@ -2,7 +2,8 @@
 PirateWeather API client (Dark Sky-compatible).
 
 Daily forecasts with explicit temperatureHigh/temperatureLow.
-$2/mo plan. API key embedded in URL path.
+$2/mo plan. API key passed via header; URL path requires a placeholder
+in the key slot (Dark Sky legacy route: /forecast/{key}/{lat},{lon}).
 """
 
 from datetime import datetime, timezone
@@ -30,17 +31,39 @@ class PirateWeatherClient(WeatherClient):
         self._api_key = api_key
 
     def _get_headers(self) -> dict[str, str]:
-        return {}
+        # PirateWeather supports header-based auth, keeping the key out of
+        # URL paths and query strings (avoids exposure in logs/proxies).
+        return {"apikey": self._api_key}
 
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:
-        return f"{_BASE_URL}/{self._api_key}/{lat},{lon}?units=us&exclude=minutely,hourly,alerts"
+        # Dark Sky-compatible route requires a key path segment; use a
+        # placeholder since the real key is sent via header.
+        return f"{_BASE_URL}/key/{lat},{lon}"
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _get_params(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> dict[str, str]:
+        return {
+            "units": "us",
+            "exclude": "minutely,hourly,alerts",
+        }
+
+    # PirateWeather's default endpoint returns a 7-day forecast window.
+    _MAX_LOOKAHEAD_DAYS = 6
+
+    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
         """Parse PirateWeather forecast response.
 
         Response has `daily.data` array with `temperatureHigh` and `temperatureLow`.
         Match target date by comparing Unix timestamp.
         """
+        days_ahead = (forecast_date.date() - datetime.now(timezone.utc).date()).days
+        if days_ahead > self._MAX_LOOKAHEAD_DAYS:
+            raise WeatherApiError(
+                f"PirateWeather default window covers {self._MAX_LOOKAHEAD_DAYS} days; "
+                f"requested {days_ahead} days ahead for {city_code}",
+                city=city_code,
+                source=self.source,
+            )
+
         try:
             daily_data = data["daily"]["data"]
         except (KeyError, TypeError) as exc:

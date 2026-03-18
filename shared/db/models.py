@@ -95,9 +95,9 @@ class City(Base):
 class WeatherForecast(Base):
     __tablename__ = "weather_forecasts"
     __table_args__ = (
-        Index("ix_forecasts_city_date_source", "city_id", "forecast_date", "source", "issued_at"),
+        Index("ix_forecasts_city_date_source", "city_id", "forecast_date", "source"),
         Index("ix_forecasts_source", "source"),
-        UniqueConstraint("source", "city_id", "forecast_date", "issued_at", name="uq_forecast_dedup"),
+        UniqueConstraint("source", "city_id", "forecast_date", name="uq_forecast_dedup"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_new_uuid)
@@ -105,10 +105,11 @@ class WeatherForecast(Base):
     city_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cities.id"), nullable=False)
     forecast_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    temp_high: Mapped[float | None] = mapped_column(Float, nullable=True)
-    temp_low: Mapped[float | None] = mapped_column(Float, nullable=True)
+    temp_high: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    temp_low: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
 
     # Relationships
     city: Mapped["City"] = relationship(back_populates="forecasts")
@@ -122,6 +123,7 @@ class KalshiMarket(Base):
     __tablename__ = "kalshi_markets"
     __table_args__ = (
         Index("ix_markets_city_date", "city_id", "forecast_date"),
+        Index("ix_markets_status", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_new_uuid)
@@ -134,15 +136,15 @@ class KalshiMarket(Base):
         Enum(MarketType, name="market_type_enum", create_constraint=True),
         nullable=False,
     )
-    bracket_low: Mapped[float | None] = mapped_column(Float, nullable=True)
-    bracket_high: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bracket_low: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    bracket_high: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     is_edge_bracket: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     status: Mapped[MarketStatus] = mapped_column(
         Enum(MarketStatus, name="market_status_enum", create_constraint=True),
         default=MarketStatus.ACTIVE,
         nullable=False,
     )
-    settlement_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    settlement_value: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
 
@@ -156,6 +158,7 @@ class KalshiMarketSnapshot(Base):
     __tablename__ = "kalshi_market_snapshots"
     __table_args__ = (
         Index("ix_snapshots_market_time", "market_id", "timestamp"),
+        UniqueConstraint("market_id", "timestamp", name="uq_snapshot_market_time"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_new_uuid)
@@ -165,6 +168,7 @@ class KalshiMarketSnapshot(Base):
     yes_ask: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     no_bid: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     no_ask: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    last_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
     open_interest: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
@@ -188,8 +192,8 @@ class Prediction(Base):
         nullable=False,
     )
     model_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    predicted_temp: Mapped[float] = mapped_column(Float, nullable=False)
-    std_dev: Mapped[float] = mapped_column(Float, nullable=False)
+    predicted_temp: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    std_dev: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     probability_distribution: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 

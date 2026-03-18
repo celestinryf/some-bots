@@ -100,6 +100,7 @@ class NwsClient(WeatherClient):
         forecast_date: datetime,
         *,
         correlation_id: str | None = None,
+        city_timezone: str | None = None,
     ) -> ForecastResult:
         """Fetch forecast, resolving gridpoint first if not cached."""
         if city_code not in self._gridpoint_cache:
@@ -108,7 +109,9 @@ class NwsClient(WeatherClient):
             if self.inter_request_delay > 0:
                 self._sleep_fn(self.inter_request_delay)
         return super().fetch_forecast(
-            city_code, lat, lon, forecast_date, correlation_id=correlation_id
+            city_code, lat, lon, forecast_date,
+            correlation_id=correlation_id,
+            city_timezone=city_timezone,
         )
 
     def _resolve_gridpoint(
@@ -146,7 +149,7 @@ class NwsClient(WeatherClient):
         """Return the cached forecast URL. Gridpoint is already resolved by fetch_forecast."""
         return self._gridpoint_cache[city_code]
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
         """Parse NWS forecast response.
 
         NWS returns 12-hour periods:

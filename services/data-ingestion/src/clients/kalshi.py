@@ -58,8 +58,8 @@ class DiscoveredMarket:
     city_code: str
     forecast_date: date
     market_type: MarketType
-    bracket_low: float | None
-    bracket_high: float | None
+    bracket_low: Decimal | None
+    bracket_high: Decimal | None
     is_edge_bracket: bool
     yes_bid: Decimal | None
     yes_ask: Decimal | None
@@ -87,11 +87,12 @@ class MarketSnapshot:
 
 @dataclass(frozen=True)
 class SettledMarket:
-    """Settlement info for a resolved market."""
+    """Settlement info for a resolved or closed market."""
 
     ticker: str
-    result: str  # "yes" or "no"
+    result: str  # "yes", "no", or "" for closed without result
     settlement_value: Decimal | None
+    final_status: MarketStatus  # SETTLED or CLOSED
 
 
 # ---------------------------------------------------------------------------
@@ -159,16 +160,16 @@ _ABOVE_PREFIX_PATTERN = re.compile(
 )
 
 
-def parse_bracket(subtitle: str | None) -> tuple[float | None, float | None, bool]:
+def parse_bracket(subtitle: str | None) -> tuple[Decimal | None, Decimal | None, bool]:
     """Parse bracket boundaries from a market subtitle.
 
     Returns:
         (bracket_low, bracket_high, is_edge_bracket)
 
     Examples:
-        "62°F to 63°F" → (62.0, 63.0, False)
-        "Below 50°F"   → (None, 50.0, True)
-        "72°F or above" → (72.0, None, True)
+        "62°F to 63°F" → (Decimal("62"), Decimal("63"), False)
+        "Below 50°F"   → (None, Decimal("50"), True)
+        "72°F or above" → (Decimal("72"), None, True)
         None            → (None, None, False)
     """
     if not subtitle:
@@ -177,27 +178,27 @@ def parse_bracket(subtitle: str | None) -> tuple[float | None, float | None, boo
     # Range bracket (most common)
     match = _RANGE_PATTERN.search(subtitle)
     if match:
-        return float(match.group(1)), float(match.group(2)), False
+        return Decimal(match.group(1)), Decimal(match.group(2)), False
 
     # "Below X" / "under X" / "less than X"
     match = _BELOW_PATTERN.search(subtitle)
     if match:
-        return None, float(match.group(1)), True
+        return None, Decimal(match.group(1)), True
 
     # "X or less" / "X or lower" / "X or below"
     match = _OR_LESS_PATTERN.search(subtitle)
     if match:
-        return None, float(match.group(1)), True
+        return None, Decimal(match.group(1)), True
 
     # "X or above" / "X or more" / "X+"
     match = _OR_ABOVE_PATTERN.search(subtitle)
     if match:
-        return float(match.group(1)), None, True
+        return Decimal(match.group(1)), None, True
 
     # "above X" / "over X" / "more than X"
     match = _ABOVE_PREFIX_PATTERN.search(subtitle)
     if match:
-        return float(match.group(1)), None, True
+        return Decimal(match.group(1)), None, True
 
     return None, None, False
 
@@ -471,6 +472,21 @@ class KalshiClient:
             batch = tickers[i : i + _BATCH_SIZE]
             try:
                 markets = _fetch_markets(self._client, tickers=batch)
+            except ResourceNotFoundError:
+                # Batch contains an unknown ticker — retry individually
+                # so one bad ticker doesn't block the entire batch.
+                markets = []
+                for ticker in batch:
+                    try:
+                        markets.extend(
+                            _fetch_markets(self._client, tickers=[ticker])
+                        )
+                    except ResourceNotFoundError:
+                        logger.warning(
+                            "kalshi_snapshot_ticker_not_found",
+                            ticker=ticker,
+                            correlation_id=correlation_id,
+                        )
             except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
                 raise KalshiApiError(
                     f"Failed to fetch market snapshots: {exc}",
@@ -509,24 +525,43 @@ class KalshiClient:
         *,
         correlation_id: str | None = None,
     ) -> list[SettledMarket]:
-        """Check which of the given tickers have been settled.
+        """Check which of the given tickers have been settled or closed.
+
+        Returns markets whose Kalshi status is SETTLED (with result) or
+        CLOSED (without result). This prevents CLOSED markets from
+        accumulating as zombie ACTIVE rows in the database.
 
         Args:
             tickers: Market tickers to check.
             correlation_id: For log tracing.
 
         Returns:
-            List of SettledMarket for resolved tickers.
+            List of SettledMarket for resolved or closed tickers.
 
         Raises:
             KalshiApiError: On API communication failures.
         """
-        settled: list[SettledMarket] = []
+        resolved: list[SettledMarket] = []
 
         for i in range(0, len(tickers), _BATCH_SIZE):
             batch = tickers[i : i + _BATCH_SIZE]
             try:
                 markets = _fetch_markets(self._client, tickers=batch)
+            except ResourceNotFoundError:
+                # Batch contains an unknown ticker — retry individually
+                # so one bad ticker doesn't block the entire batch.
+                markets = []
+                for ticker in batch:
+                    try:
+                        markets.extend(
+                            _fetch_markets(self._client, tickers=[ticker])
+                        )
+                    except ResourceNotFoundError:
+                        logger.warning(
+                            "kalshi_settlement_ticker_not_found",
+                            ticker=ticker,
+                            correlation_id=correlation_id,
+                        )
             except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
                 raise KalshiApiError(
                     f"Failed to check settlements: {exc}",
@@ -535,20 +570,21 @@ class KalshiClient:
 
             for market in markets:
                 status = map_kalshi_status(market.status)
-                if status == MarketStatus.SETTLED and market.result:
-                    settled.append(SettledMarket(
+                if status in (MarketStatus.SETTLED, MarketStatus.CLOSED):
+                    resolved.append(SettledMarket(
                         ticker=market.ticker,
-                        result=market.result,
+                        result=market.result or "",
                         settlement_value=_to_decimal(
                             market.settlement_value_dollars
                         ),
+                        final_status=status,
                     ))
 
         logger.info(
             "kalshi_settlements_checked",
             tickers_checked=len(tickers),
-            settled_count=len(settled),
+            settled_count=len(resolved),
             correlation_id=correlation_id,
         )
 
-        return settled
+        return resolved

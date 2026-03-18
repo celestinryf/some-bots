@@ -69,6 +69,15 @@ class VisualCrossingClient(WeatherClient):
 
         day = days[0]
 
+        expected_date = forecast_date.strftime("%Y-%m-%d")
+        if day.get("datetime") != expected_date:
+            raise WeatherApiError(
+                f"Visual Crossing returned unexpected date {day.get('datetime')!r} "
+                f"for city {city_code}, expected {expected_date}",
+                city=city_code,
+                source=self.source,
+            )
+
         return ParsedForecast(
             temp_high=self._to_optional_float(day.get("tempmax")),
             temp_low=self._to_optional_float(day.get("tempmin")),

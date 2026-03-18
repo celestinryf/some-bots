@@ -46,12 +46,24 @@ class PirateWeatherClient(WeatherClient):
             "exclude": "minutely,hourly,alerts",
         }
 
+    # PirateWeather's default endpoint returns a 7-day forecast window.
+    _MAX_LOOKAHEAD_DAYS = 6
+
     def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
         """Parse PirateWeather forecast response.
 
         Response has `daily.data` array with `temperatureHigh` and `temperatureLow`.
         Match target date by comparing Unix timestamp.
         """
+        days_ahead = (forecast_date.date() - datetime.now(timezone.utc).date()).days
+        if days_ahead > self._MAX_LOOKAHEAD_DAYS:
+            raise WeatherApiError(
+                f"PirateWeather default window covers {self._MAX_LOOKAHEAD_DAYS} days; "
+                f"requested {days_ahead} days ahead for {city_code}",
+                city=city_code,
+                source=self.source,
+            )
+
         try:
             daily_data = data["daily"]["data"]
         except (KeyError, TypeError) as exc:

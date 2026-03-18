@@ -490,7 +490,7 @@ class TestPirateWeatherClient:
         )
 
         far_future = datetime(2027, 1, 1, tzinfo=timezone.utc)
-        with pytest.raises(WeatherApiError, match="Target date"):
+        with pytest.raises(WeatherApiError, match="default window covers"):
             client.fetch_forecast("NYC", 40.7, -74.0, far_future)
 
     @respx.mock

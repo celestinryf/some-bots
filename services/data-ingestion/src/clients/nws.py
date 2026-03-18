@@ -146,7 +146,7 @@ class NwsClient(WeatherClient):
         """Return the cached forecast URL. Gridpoint is already resolved by fetch_forecast."""
         return self._gridpoint_cache[city_code]
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
         """Parse NWS forecast response.
 
         NWS returns 12-hour periods:

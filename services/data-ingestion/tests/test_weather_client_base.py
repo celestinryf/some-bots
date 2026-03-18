@@ -40,7 +40,7 @@ class _StubWeatherClient(WeatherClient):
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:
         return _STUB_URL
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
         return ParsedForecast(
             temp_high=data.get("high"),
             temp_low=data.get("low"),
@@ -60,7 +60,7 @@ class _BrokenParseClient(WeatherClient):
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:
         return _STUB_URL
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
         # Simulate an uncaught bug in a subclass parser
         raise ValueError("unexpected field type")
 

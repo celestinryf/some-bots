@@ -77,6 +77,7 @@ def run_weather_ingestion(
                     lon=city.lon,
                     forecast_date=forecast_date,
                     correlation_id=correlation_id,
+                    city_timezone=city.timezone,
                 )
 
                 # SAVEPOINT per city so a single failure doesn't poison

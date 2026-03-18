@@ -43,7 +43,7 @@ class PirateWeatherClient(WeatherClient):
             "apikey": self._api_key,
         }
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
         """Parse PirateWeather forecast response.
 
         Response has `daily.data` array with `temperatureHigh` and `temperatureLow`.

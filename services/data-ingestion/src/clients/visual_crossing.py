@@ -45,7 +45,7 @@ class VisualCrossingClient(WeatherClient):
             "elements": "datetime,tempmax,tempmin",
         }
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
         """Parse Visual Crossing timeline response.
 
         Response has a `days` array with explicit `tempmax` and `tempmin`.

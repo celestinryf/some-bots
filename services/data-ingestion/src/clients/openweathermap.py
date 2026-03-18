@@ -8,6 +8,7 @@ intervals into daily high/low.
 
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from shared.config.errors import WeatherApiError
 from shared.db.enums import WeatherSource
@@ -45,11 +46,21 @@ class OpenWeatherMapClient(WeatherClient):
             "units": "imperial",
         }
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _parse_response(
+        self,
+        data: dict[str, Any],
+        city_code: str,
+        forecast_date: datetime,
+        *,
+        city_timezone: str | None = None,
+    ) -> ParsedForecast:
         """Parse OWM 5-day/3-hour response.
 
-        Filters 3-hour intervals to only the target date, then computes
-        daily max(temp_max) and min(temp_min).
+        Filters 3-hour intervals to the target **local** date for the city,
+        then computes daily max(temp_max) and min(temp_min). OWM returns
+        UTC timestamps, so we convert each to the city's local timezone
+        before comparing dates. This ensures afternoon highs for western
+        US cities (which fall on the next UTC day) are included.
         """
         try:
             intervals = data["list"]
@@ -68,9 +79,9 @@ class OpenWeatherMapClient(WeatherClient):
             )
 
         target_date = self._extract_date(forecast_date)
-        target_key = str(target_date)
+        tz = ZoneInfo(city_timezone) if city_timezone else timezone.utc
 
-        # Filter to target date only and collect temps
+        # Filter to target local date and collect temps
         highs: list[float] = []
         lows: list[float] = []
         matched_intervals: list[dict[str, Any]] = []
@@ -78,11 +89,13 @@ class OpenWeatherMapClient(WeatherClient):
         for interval in intervals:
             dt_txt = interval.get("dt_txt", "")
             try:
-                interval_date = datetime.strptime(dt_txt, "%Y-%m-%d %H:%M:%S").date()
+                # OWM dt_txt is UTC; convert to city local time for date comparison
+                utc_dt = datetime.strptime(dt_txt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                local_date = utc_dt.astimezone(tz).date()
             except ValueError:
                 continue
 
-            if str(interval_date) != target_key:
+            if local_date != target_date:
                 continue
 
             matched_intervals.append(interval)

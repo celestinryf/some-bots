@@ -104,6 +104,7 @@ class WeatherClient(ABC):
         forecast_date: datetime,
         *,
         correlation_id: str | None = None,
+        city_timezone: str | None = None,
     ) -> ForecastResult:
         """Fetch a forecast for a single city and date.
 
@@ -113,6 +114,8 @@ class WeatherClient(ABC):
             lon: City longitude.
             forecast_date: The date to forecast for.
             correlation_id: Optional ID for log tracing.
+            city_timezone: IANA timezone (e.g., "America/New_York") for
+                sources that need local-date filtering (OWM).
 
         Returns:
             ForecastResult with parsed temperatures and raw response.
@@ -139,7 +142,7 @@ class WeatherClient(ABC):
             ) from exc
 
         try:
-            parsed = self._parse_response(data, city_code, forecast_date)
+            parsed = self._parse_response(data, city_code, forecast_date, city_timezone=city_timezone)
         except WeatherBotError:
             raise
         except (KeyError, TypeError, ValueError, IndexError, OSError) as exc:
@@ -277,9 +280,19 @@ class WeatherClient(ABC):
         return None
 
     @abstractmethod
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime) -> ParsedForecast:
+    def _parse_response(
+        self,
+        data: dict[str, Any],
+        city_code: str,
+        forecast_date: datetime,
+        *,
+        city_timezone: str | None = None,
+    ) -> ParsedForecast:
         """Parse the API JSON response into a ParsedForecast.
 
         Return a ParsedForecast with temp_high, temp_low, and issued_at.
         Optionally set raw_response to override what gets stored (e.g., trimmed data).
+
+        Args:
+            city_timezone: IANA timezone for local-date filtering (used by OWM).
         """

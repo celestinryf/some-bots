@@ -675,3 +675,41 @@ class TestOpenWeatherMapClient:
         client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
         request_url = str(route.calls[0].request.url)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         assert "appid=test-owm-key" in request_url
+
+    @respx.mock
+    def test_local_timezone_captures_cross_utc_intervals(self, client: OpenWeatherMapClient) -> None:
+        """UTC intervals that fall on the local target date are included.
+
+        For LA (UTC-7 in March / PDT), 2026-03-16 local afternoon corresponds
+        to 2026-03-17 00:00 UTC. Without timezone-aware filtering, that
+        interval would be excluded, missing the afternoon high.
+        """
+        forecast_date = datetime(2026, 3, 16, tzinfo=timezone.utc)
+        data: dict[str, Any] = {
+            "list": [
+                # 2026-03-16 18:00 UTC = 2026-03-16 11:00 PDT (local Mar 16)
+                {"dt_txt": "2026-03-16 18:00:00", "main": {"temp_max": 70.0, "temp_min": 60.0}},
+                # 2026-03-16 21:00 UTC = 2026-03-16 14:00 PDT (local Mar 16)
+                {"dt_txt": "2026-03-16 21:00:00", "main": {"temp_max": 78.0, "temp_min": 65.0}},
+                # 2026-03-17 00:00 UTC = 2026-03-16 17:00 PDT (still local Mar 16!)
+                {"dt_txt": "2026-03-17 00:00:00", "main": {"temp_max": 75.0, "temp_min": 62.0}},
+                # 2026-03-17 03:00 UTC = 2026-03-16 20:00 PDT (still local Mar 16!)
+                {"dt_txt": "2026-03-17 03:00:00", "main": {"temp_max": 68.0, "temp_min": 58.0}},
+                # 2026-03-17 07:00 UTC = 2026-03-17 00:00 PDT (local Mar 17 — excluded)
+                {"dt_txt": "2026-03-17 07:00:00", "main": {"temp_max": 55.0, "temp_min": 50.0}},
+            ]
+        }
+        lax_params = {"lat": "34.05", "lon": "-118.24", "appid": "test-owm-key", "units": "imperial"}
+        respx.get(_OWM_URL, params=lax_params).mock(
+            return_value=httpx.Response(200, json=data)
+        )
+
+        result = client.fetch_forecast(
+            "LAX", 34.05, -118.24, forecast_date,
+            city_timezone="America/Los_Angeles",
+        )
+        # All 4 local Mar-16 intervals captured, including the cross-UTC ones
+        assert result.temp_high == 78.0  # max of [70, 78, 75, 68]
+        assert result.temp_low == 58.0   # min of [60, 65, 62, 58]
+        # raw_response should have 4 intervals, not 2
+        assert len(result.raw_response["list"]) == 4

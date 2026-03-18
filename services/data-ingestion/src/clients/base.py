@@ -255,7 +255,13 @@ class WeatherClient(ABC):
                 delay = self.backoff_base ** attempt
                 self._sleep_fn(delay)
 
-        raise last_exception  # type: ignore[misc]
+        if last_exception is None:
+            raise WeatherApiError(
+                f"No retries attempted for {self.source}/{city_code} (max_retries={self.max_retries})",
+                city=city_code,
+                source=self.source,
+            )
+        raise last_exception
 
     @abstractmethod
     def _build_url(self, city_code: str, lat: float, lon: float, forecast_date: datetime) -> str:

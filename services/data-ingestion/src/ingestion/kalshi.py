@@ -184,9 +184,9 @@ def run_kalshi_snapshots(
     # NOTE: This session closes before the Kalshi API call, and a second
     # session opens for inserts. A market could be settled between the two
     # sessions, causing a snapshot for a now-SETTLED market. This is an
-    # accepted trade-off: snapshot cleanup will purge stale rows, and using
-    # a single long-lived session would hold a DB connection idle during the
-    # external API call.
+    # accepted trade-off: the settlement job eagerly deletes snapshots for
+    # settled markets, and using a single long-lived session would hold a
+    # DB connection idle during the external API call.
     with session_factory() as session:
         active_markets = (
             session.execute(
@@ -378,6 +378,13 @@ def run_kalshi_settlements(
                             settlement_value=settled.settlement_value,
                             # Core UPDATE bypasses ORM onupdate, so set explicitly
                             updated_at=datetime.now(timezone.utc),
+                        )
+                    )
+                    # Eagerly purge snapshots for settled markets so they don't
+                    # linger until the 30-day retention cleanup.
+                    session.execute(
+                        delete(KalshiMarketSnapshot).where(
+                            KalshiMarketSnapshot.ticker == settled.ticker,
                         )
                     )
 

@@ -238,6 +238,7 @@ def run_kalshi_snapshots(
 
     insert_count = 0
     skip_count = 0
+    dedup_count = 0
     error_count = 0
 
     with session_factory() as session:
@@ -269,8 +270,11 @@ def run_kalshi_snapshots(
                     ).on_conflict_do_nothing(
                         constraint="uq_snapshot_market_time",
                     )
-                    session.execute(stmt)
-                insert_count += 1
+                    result = session.execute(stmt)
+                if (result.rowcount or 0) > 0:
+                    insert_count += 1
+                else:
+                    dedup_count += 1
             except Exception as exc:
                 error_count += 1
                 logger.error(
@@ -288,6 +292,7 @@ def run_kalshi_snapshots(
         correlation_id=correlation_id,
         inserted=insert_count,
         skipped=skip_count,
+        duplicates=dedup_count,
         errors=error_count,
         total_fetched=len(snapshots),
     )

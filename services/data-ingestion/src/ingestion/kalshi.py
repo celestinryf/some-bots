@@ -42,7 +42,7 @@ def run_kalshi_discovery(
     session_factory: Callable[[], AbstractContextManager[Session]],
     forecast_date: date | None = None,
     run_id: str,
-) -> None:
+) -> bool:
     """Discover weather bracket markets and upsert into the database.
 
     Uses INSERT ON CONFLICT DO UPDATE on the unique ``ticker`` field.
@@ -54,6 +54,10 @@ def run_kalshi_discovery(
         session_factory: Callable returning a context-managed DB session.
         forecast_date: Optional date filter. If None, discovers all dates.
         run_id: Shared ID for the entire ingestion cycle.
+
+    Returns:
+        True when the discovery batch completed without per-market or session
+        errors. False when the batch should be retried later.
     """
     correlation_id = generate_correlation_id()
 
@@ -78,7 +82,9 @@ def run_kalshi_discovery(
             correlation_id=correlation_id,
             run_id=run_id,
         )
-        return
+        return False
+    raw_had_series_errors = getattr(kalshi_client, "last_discovery_had_errors", False)
+    had_series_errors = raw_had_series_errors if isinstance(raw_had_series_errors, bool) else False
 
     upsert_count = 0
     skip_count = 0
@@ -159,7 +165,7 @@ def run_kalshi_discovery(
             errors=error_count,
             total_discovered=len(discovered),
         )
-        return
+        return False
 
     logger.info(
         "kalshi_discovery_complete",
@@ -168,8 +174,17 @@ def run_kalshi_discovery(
         upserted=upsert_count,
         skipped=skip_count,
         errors=error_count,
+        had_series_errors=had_series_errors,
         total_discovered=len(discovered),
     )
+    if had_series_errors:
+        logger.warning(
+            "kalshi_discovery_partial_series_failure",
+            run_id=run_id,
+            correlation_id=correlation_id,
+            message="Series fetch errors detected; checkpoint must not advance.",
+        )
+    return error_count == 0 and not had_series_errors
 
 
 # ---------------------------------------------------------------------------
@@ -394,25 +409,25 @@ def run_kalshi_settlements(
         return
 
     unsettled = []
-    try:
-        for market in unsettled_candidates:
+    for market in unsettled_candidates:
+        try:
             if _forecast_day_has_passed(
                 forecast_date=market.forecast_date,
                 city_timezone=market.city.timezone,
                 now=now,
             ):
                 unsettled.append(market)
-    except Exception as exc:
-        logger.error(
-            "kalshi_settlements_timezone_filter_failed",
-            ticker=getattr(market, "ticker", None),
-            city_timezone=getattr(getattr(market, "city", None), "timezone", None),
-            error=str(exc),
-            error_type=type(exc).__name__,
-            correlation_id=correlation_id,
-            run_id=run_id,
-        )
-        return
+        except Exception as exc:
+            logger.error(
+                "kalshi_settlements_timezone_filter_failed",
+                ticker=getattr(market, "ticker", None),
+                city_timezone=getattr(getattr(market, "city", None), "timezone", None),
+                error=str(exc),
+                error_type=type(exc).__name__,
+                correlation_id=correlation_id,
+                run_id=run_id,
+            )
+            continue
 
     if not unsettled:
         logger.debug(
@@ -536,6 +551,15 @@ def run_kalshi_snapshot_cleanup(
         run_id: Shared ID for the entire ingestion cycle.
     """
     correlation_id = generate_correlation_id()
+    if not isinstance(retention_days, int) or isinstance(retention_days, bool) or retention_days < 1:
+        logger.error(
+            "kalshi_snapshot_cleanup_invalid_retention_days",
+            run_id=run_id,
+            correlation_id=correlation_id,
+            retention_days=retention_days,
+        )
+        return
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
     logger.info(
@@ -554,20 +578,30 @@ def run_kalshi_snapshot_cleanup(
     try:
         while True:
             with session_factory() as session:
-                # Subquery to select a bounded batch of IDs for deletion.
-                batch_ids = (
-                    select(KalshiMarketSnapshot.id)
-                    .where(KalshiMarketSnapshot.timestamp < cutoff)
-                    .limit(batch_size)
-                    .subquery()
+                batch_ids = list(
+                    session.execute(
+                        select(KalshiMarketSnapshot.id)
+                        .where(KalshiMarketSnapshot.timestamp < cutoff)
+                        .order_by(
+                            KalshiMarketSnapshot.timestamp,
+                            KalshiMarketSnapshot.id,
+                        )
+                        .limit(batch_size)
+                    )
+                    .scalars()
+                    .all()
                 )
+
+                if not batch_ids:
+                    break
+
                 result = session.execute(
                     delete(KalshiMarketSnapshot).where(
-                        KalshiMarketSnapshot.id.in_(select(batch_ids))
+                        KalshiMarketSnapshot.id.in_(batch_ids)
                     )
                 )
-                batch_deleted = result.rowcount or 0  # type: ignore[union-attr]
-                deleted_count += batch_deleted
+                batch_deleted = result.rowcount
+                deleted_count += len(batch_ids) if batch_deleted is None else batch_deleted
 
             if batch_deleted < batch_size:
                 break

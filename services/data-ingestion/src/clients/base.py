@@ -13,10 +13,13 @@ Subclasses implement: _build_url(), _get_headers(), _parse_response().
 _parse_response returns ParsedForecast; the base class constructs ForecastResult.
 """
 
+import random
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import date, datetime
+from email.utils import parsedate_to_datetime
+import math
 from typing import Any
 
 import httpx
@@ -55,12 +58,14 @@ class WeatherClient(ABC):
         backoff_base: float = 2.0,
         inter_request_delay: float = 0.0,
         sleep_fn: Callable[[float], None] = time.sleep,
+        jitter_fn: Callable[[float, float], float] = random.uniform,
     ) -> None:
         self.source = source
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.inter_request_delay = inter_request_delay
         self._sleep_fn = sleep_fn
+        self._jitter_fn = jitter_fn
 
         self._client = httpx.Client(
             timeout=httpx.Timeout(connect=connect_timeout, read=read_timeout, write=5.0, pool=5.0),
@@ -91,6 +96,44 @@ class WeatherClient(ABC):
     def _to_optional_float(value: float | int | str | None) -> float | None:
         """Convert a value to float, returning None if input is None."""
         return float(value) if value is not None else None
+
+    @staticmethod
+    def _parse_retry_after(retry_after: str | None) -> float | None:
+        """Parse Retry-After seconds or HTTP-date into a non-negative delay."""
+        if retry_after is None:
+            return None
+
+        candidate = retry_after.strip()
+        if candidate == "":
+            return None
+
+        try:
+            seconds = float(candidate)
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(candidate)
+            except (TypeError, ValueError, IndexError, OverflowError):
+                return None
+            now = datetime.now(retry_at.tzinfo)
+            seconds = (retry_at - now).total_seconds()
+
+        if not math.isfinite(seconds):
+            return None
+        if seconds < 0:
+            return 0.0
+        return seconds
+
+    def _compute_retry_delay(self, attempt: int, response: httpx.Response | None = None) -> float:
+        """Compute the next retry delay using Retry-After or jittered backoff."""
+        retry_after_seconds = None
+        if response is not None:
+            retry_after_seconds = self._parse_retry_after(response.headers.get("Retry-After"))
+
+        if retry_after_seconds is not None:
+            return retry_after_seconds
+
+        backoff_ceiling = self.backoff_base ** attempt
+        return self._jitter_fn(0.0, backoff_ceiling)
 
     # ------------------------------------------------------------------
     # Core fetch flow
@@ -180,6 +223,7 @@ class WeatherClient(ABC):
         last_exception: Exception | None = None
 
         for attempt in range(self.max_retries + 1):
+            response: httpx.Response | None = None
             try:
                 response = self._client.get(url, headers=headers, params=params)
 
@@ -252,7 +296,7 @@ class WeatherClient(ABC):
 
             # Exponential backoff before retry (skip on last attempt)
             if attempt < self.max_retries:
-                delay = self.backoff_base ** attempt
+                delay = self._compute_retry_delay(attempt, response)
                 self._sleep_fn(delay)
 
         if last_exception is None:

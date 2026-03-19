@@ -2,7 +2,7 @@
 
 import pytest
 
-from shared.config.settings import Settings, get_settings, reset_settings
+from shared.config.settings import Environment, Settings, get_settings, reset_settings
 
 
 class TestSettingsDefaults:
@@ -20,7 +20,7 @@ class TestSettingsDefaults:
 
     def test_default_environment_is_development(self):
         s = Settings()
-        assert s.environment == "development"
+        assert s.environment == Environment.DEVELOPMENT
 
     def test_default_log_level_is_info(self):
         s = Settings()
@@ -45,12 +45,12 @@ class TestDatabaseUrl:
 
 class TestIsProduction:
     def test_development_is_not_production(self):
-        s = Settings(environment="development")
+        s = Settings(environment=Environment.DEVELOPMENT)
         assert s.is_production is False
 
     def test_production_is_production(self):
         s = Settings(
-            environment="production",
+            environment=Environment.PRODUCTION,
             db_password="secret",
             visual_crossing_api_key="vc-key",
             pirate_weather_api_key="pw-key",
@@ -61,9 +61,9 @@ class TestIsProduction:
         )
         assert s.is_production is True
 
-    def test_arbitrary_value_is_not_production(self):
-        s = Settings(environment="staging")
-        assert s.is_production is False
+    def test_unknown_environment_raises(self):
+        with pytest.raises(ValueError, match="ENVIRONMENT must be one of"):
+            Settings(environment="staging")
 
 
 class TestGetSettings:
@@ -87,16 +87,16 @@ class TestGetSettings:
         assert isinstance(s2, Settings)
 
     def test_reset_settings_with_override(self):
-        override = Settings(environment="test-override", db_host="testhost")
+        override = Settings(environment=Environment.TEST, db_host="testhost")
         reset_settings(override)
         s = get_settings()
-        assert s.environment == "test-override"
+        assert s.environment == Environment.TEST
         assert s.db_host == "testhost"
 
     def test_reset_settings_none_reloads_from_env(self):
-        override = Settings(environment="override")
+        override = Settings(environment=Environment.TEST)
         reset_settings(override)
-        assert get_settings().environment == "override"
+        assert get_settings().environment == Environment.TEST
 
         reset_settings(None)
         s = get_settings()
@@ -137,6 +137,18 @@ class TestLoadFromEnv:
         reset_settings()
         s = get_settings()
         assert s.log_level == "DEBUG"
+
+    def test_reads_environment_as_enum(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("ENVIRONMENT", "TEST")
+        reset_settings()
+        s = get_settings()
+        assert s.environment == Environment.TEST
+
+    def test_unknown_environment_from_env_raises(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        reset_settings()
+        with pytest.raises(ValueError, match="ENVIRONMENT must be one of"):
+            get_settings()
 
 
 class TestSettingsImmutability:
@@ -180,11 +192,11 @@ class TestProductionValidation:
 
     def test_production_missing_secrets_raises(self) -> None:
         with pytest.raises(ValueError, match="Required secrets missing"):
-            Settings(environment="production")
+            Settings(environment=Environment.PRODUCTION)
 
     def test_production_with_all_secrets_ok(self) -> None:
         s = Settings(
-            environment="production",
+            environment=Environment.PRODUCTION,
             db_password="secret",
             visual_crossing_api_key="vc-key",
             pirate_weather_api_key="pw-key",
@@ -196,13 +208,13 @@ class TestProductionValidation:
         assert s.is_production is True
 
     def test_development_allows_empty_secrets(self) -> None:
-        s = Settings(environment="development")
+        s = Settings(environment=Environment.DEVELOPMENT)
         assert s.is_production is False
 
     def test_production_partial_secrets_lists_missing(self) -> None:
         with pytest.raises(ValueError, match="openweather_api_key") as exc_info:
             Settings(
-                environment="production",
+                environment=Environment.PRODUCTION,
                 db_password="secret",
                 visual_crossing_api_key="vc-key",
                 pirate_weather_api_key="pw-key",
@@ -216,7 +228,7 @@ class TestProductionValidation:
     def test_production_missing_kalshi_credentials_raises(self) -> None:
         with pytest.raises(ValueError, match="kalshi_api_key_id") as exc_info:
             Settings(
-                environment="production",
+                environment=Environment.PRODUCTION,
                 db_password="secret",
                 visual_crossing_api_key="vc-key",
                 pirate_weather_api_key="pw-key",

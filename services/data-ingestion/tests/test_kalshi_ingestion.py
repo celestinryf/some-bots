@@ -100,7 +100,7 @@ class TestRunKalshiDiscovery:
         mock_session = MagicMock()
         city = _make_city("NYC")
 
-        run_kalshi_discovery(
+        result = run_kalshi_discovery(
             kalshi_client=mock_kalshi,
             city_map={"NYC": city},
             session_factory=_mock_session_factory(mock_session),
@@ -108,6 +108,7 @@ class TestRunKalshiDiscovery:
             run_id="test-run-1",
         )
 
+        assert result is True
         mock_kalshi.discover_markets.assert_called_once()
         mock_session.execute.assert_called_once()
 
@@ -155,13 +156,14 @@ class TestRunKalshiDiscovery:
 
         mock_session = MagicMock()
 
-        run_kalshi_discovery(
+        result = run_kalshi_discovery(
             kalshi_client=mock_kalshi,
             city_map={"NYC": _make_city("NYC")},
             session_factory=_mock_session_factory(mock_session),
             run_id="test-run-4",
         )
 
+        assert result is True
         assert mock_session.execute.call_count == 2
 
     def test_per_market_db_error_does_not_stop_others(self) -> None:
@@ -175,13 +177,14 @@ class TestRunKalshiDiscovery:
         # First execute fails, second succeeds
         mock_session.execute.side_effect = [RuntimeError("DB error"), MagicMock()]
 
-        run_kalshi_discovery(
+        result = run_kalshi_discovery(
             kalshi_client=mock_kalshi,
             city_map={"NYC": _make_city("NYC")},
             session_factory=_mock_session_factory(mock_session),
             run_id="test-run-5",
         )
 
+        assert result is False
         assert mock_session.execute.call_count == 2
 
     def test_commit_failure_is_logged_and_suppressed(self) -> None:
@@ -512,34 +515,58 @@ class TestRunKalshiSettlements:
 
         mock_kalshi.check_settlements.assert_not_called()
 
-    def test_invalid_city_timezone_is_logged_and_safely_returns(self) -> None:
+    def test_invalid_city_timezone_is_logged_and_other_markets_continue(self) -> None:
         mock_kalshi = MagicMock(spec=KalshiClient)
-        mock_market = _make_mock_kalshi_market(
+        bad_market = _make_mock_kalshi_market(
             ticker="KXHIGHBAD-26MAR17-T72",
             forecast_date=datetime(2026, 3, 15, tzinfo=timezone.utc),
             city_timezone="Bad/Timezone",
         )
+        good_market = _make_mock_kalshi_market(
+            ticker="KXHIGHGOOD-26MAR17-T72",
+            forecast_date=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            city_timezone="America/New_York",
+        )
 
         mock_session = MagicMock()
         mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [mock_market]
+        mock_scalars.all.return_value = [bad_market, good_market]
         mock_execute = MagicMock()
         mock_execute.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_execute
 
-        with patch("src.ingestion.kalshi.logger.error") as mock_log_error:
-            run_kalshi_settlements(
-                kalshi_client=mock_kalshi,
-                session_factory=_mock_session_factory(mock_session),
-                run_id="test-run-bad-timezone",
-            )
+        mock_kalshi.check_settlements.return_value = [
+            SettledMarket(
+                ticker=good_market.ticker,
+                result="yes",
+                settlement_value=Decimal("1.00"),
+                final_status=MarketStatus.SETTLED,
+            ),
+        ]
 
-        mock_kalshi.check_settlements.assert_not_called()
+        class _FrozenDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):  # type: ignore[override]
+                frozen = cls(2026, 3, 18, 12, 0, tzinfo=timezone.utc)
+                return frozen if tz is None else frozen.astimezone(tz)
+
+        with patch("src.ingestion.kalshi.logger.error") as mock_log_error:
+            with patch("src.ingestion.kalshi.datetime", _FrozenDateTime):
+                run_kalshi_settlements(
+                    kalshi_client=mock_kalshi,
+                    session_factory=_mock_session_factory(mock_session),
+                    run_id="test-run-bad-timezone",
+                )
+
+        mock_kalshi.check_settlements.assert_called_once()
+        assert mock_kalshi.check_settlements.call_args.kwargs["tickers"] == [
+            good_market.ticker,
+        ]
         mock_log_error.assert_called_once()
         assert mock_log_error.call_args.args[0] == "kalshi_settlements_timezone_filter_failed"
         assert mock_log_error.call_args.kwargs["run_id"] == "test-run-bad-timezone"
         assert mock_log_error.call_args.kwargs["correlation_id"]
-        assert mock_log_error.call_args.kwargs["ticker"] == "KXHIGHBAD-26MAR17-T72"
+        assert mock_log_error.call_args.kwargs["ticker"] == bad_market.ticker
         assert mock_log_error.call_args.kwargs["city_timezone"] == "Bad/Timezone"
         assert mock_log_error.call_args.kwargs["error_type"] == "ZoneInfoNotFoundError"
 
@@ -552,9 +579,11 @@ class TestRunKalshiSettlements:
 class TestRunKalshiSnapshotCleanup:
     def test_deletes_old_snapshots(self) -> None:
         mock_session = MagicMock()
-        mock_result = MagicMock()
-        mock_result.rowcount = 42
-        mock_session.execute.return_value = mock_result
+        mock_select_result = MagicMock()
+        mock_select_result.scalars.return_value.all.return_value = [uuid.uuid4(), uuid.uuid4()]
+        mock_delete_result = MagicMock()
+        mock_delete_result.rowcount = 2
+        mock_session.execute.side_effect = [mock_select_result, mock_delete_result]
 
         run_kalshi_snapshot_cleanup(
             session_factory=_mock_session_factory(mock_session),
@@ -562,13 +591,13 @@ class TestRunKalshiSnapshotCleanup:
             run_id="test-cleanup-1",
         )
 
-        mock_session.execute.assert_called_once()
+        assert mock_session.execute.call_count == 2
 
     def test_custom_retention_days(self) -> None:
         mock_session = MagicMock()
-        mock_result = MagicMock()
-        mock_result.rowcount = 0
-        mock_session.execute.return_value = mock_result
+        mock_select_result = MagicMock()
+        mock_select_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_select_result
 
         run_kalshi_snapshot_cleanup(
             session_factory=_mock_session_factory(mock_session),
@@ -577,6 +606,17 @@ class TestRunKalshiSnapshotCleanup:
         )
 
         mock_session.execute.assert_called_once()
+
+    def test_invalid_retention_days_returns_without_db_work(self) -> None:
+        mock_session = MagicMock()
+
+        run_kalshi_snapshot_cleanup(
+            session_factory=_mock_session_factory(mock_session),
+            retention_days=0,
+            run_id="test-cleanup-invalid",
+        )
+
+        mock_session.execute.assert_not_called()
 
     def test_db_error_handled_gracefully(self) -> None:
         mock_session = MagicMock()

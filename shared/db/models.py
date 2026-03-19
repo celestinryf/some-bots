@@ -158,6 +158,7 @@ class KalshiMarketSnapshot(Base):
     __tablename__ = "kalshi_market_snapshots"
     __table_args__ = (
         Index("ix_snapshots_market_time", "market_id", "timestamp"),
+        Index("ix_snapshots_timestamp", "timestamp"),
         UniqueConstraint("market_id", "timestamp", name="uq_snapshot_market_time"),
     )
 
@@ -183,6 +184,15 @@ class KalshiMarketSnapshot(Base):
 
 class Prediction(Base):
     __tablename__ = "predictions"
+    __table_args__ = (
+        UniqueConstraint(
+            "city_id",
+            "forecast_date",
+            "market_type",
+            "model_version",
+            name="uq_prediction_city_date_type_model",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_new_uuid)
     city_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cities.id"), nullable=False)
@@ -210,6 +220,11 @@ class Recommendation(Base):
     __tablename__ = "recommendations"
     __table_args__ = (
         Index("ix_recommendations_created", "created_at"),
+        UniqueConstraint(
+            "prediction_id",
+            "market_id",
+            name="uq_recommendation_prediction_market",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_new_uuid)

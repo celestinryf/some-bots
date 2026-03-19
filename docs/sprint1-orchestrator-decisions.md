@@ -13,7 +13,7 @@
 | 1 | Scheduler | APScheduler + `--run-once` CLI | Handles missed jobs, concurrent execution, graceful shutdown. CLI enables testing without scheduler. |
 | 2 | Code layout | `ingestion/` package (weather.py, kalshi.py, factories.py) | Separation of concerns. Each module owns one job. Testable independently. |
 | 3 | City config | Load once at startup, dict cache | 42 cities never change mid-run. Eliminates ~168 redundant DB queries per cycle. |
-| 4 | Kalshi polling | Discovery 2h / Snapshots 5m | Discovery is expensive (84 series). Snapshots are cheap (batch). Different cadences match data volatility. |
+| 4 | Kalshi market data mode | REST-only this sprint: discovery 2h / snapshots 5m / settlements 2h | Keeps the orchestrator simple and observable while the WebSocket path is deferred. Different cadences match data volatility. |
 
 ## Code Quality
 
@@ -44,6 +44,15 @@
 
 ---
 
+## Runtime Topology
+
+- Active Sprint 1 containers: `postgres`, `data-ingestion`, `prediction-engine`, `notification-service`
+- `data-ingestion` owns the APScheduler loop and all Kalshi/weather polling jobs
+- `prediction-engine` and `notification-service` remain separate runtime services, but they are not part of the orchestrator process
+- No Kalshi WebSocket worker exists in this sprint; all Kalshi reads come from REST jobs
+
+---
+
 ## Verification Plan
 
 After implementation, verify each decision by checking:
@@ -55,6 +64,7 @@ After implementation, verify each decision by checking:
 - [ ] Logs contain both `run_id` and `correlation_id`
 - [ ] Integration tests run with `pytest -m integration`
 - [ ] Failure injection tests verify error isolation
+- [ ] Kalshi runtime remains REST-only for Sprint 1; no WebSocket dependency exists
 - [ ] Kalshi snapshots filter to 24-48h settlement window
 - [ ] NWS gridpoint cache persists across restarts
 - [ ] Raw responses are trimmed to target day only

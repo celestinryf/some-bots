@@ -10,6 +10,7 @@ storing results in PostgreSQL. Supports two modes:
 
 import argparse
 import math
+import os
 import signal
 import sys
 import threading
@@ -26,6 +27,7 @@ from sqlalchemy import select
 
 from shared.config.logging import generate_correlation_id, get_logger, setup_logging
 from shared.config.settings import get_settings
+from shared.db.enums import WeatherSource
 from shared.db.models import City
 from shared.db.seed import seed_cities
 from shared.db.session import get_session
@@ -42,6 +44,10 @@ from src.ingestion.kalshi import (
 from src.ingestion.weather import run_weather_ingestion
 
 logger = get_logger("data-ingestion")
+
+_DEFAULT_WEATHER_POLL_INTERVAL_SECONDS = 2 * 3600
+_MIN_WEATHER_POLL_INTERVAL_SECONDS = 5 * 60
+_MAX_WEATHER_POLL_INTERVAL_SECONDS = 24 * 3600
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +161,109 @@ class CycleIdGenerator:
             return self._current_id
 
 
+class DiscoveryCheckpoint:
+    """Track successful Kalshi discovery runs by city/date for the current UTC day."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._completed_on: dict[tuple[str, date], date] = {}
+
+    def filter_pending(
+        self,
+        city_map: dict[str, City],
+        *,
+        forecast_date: date,
+        checkpoint_day: date,
+    ) -> dict[str, City]:
+        with self._lock:
+            return {
+                city_code: city
+                for city_code, city in city_map.items()
+                if self._completed_on.get((city_code, forecast_date)) != checkpoint_day
+            }
+
+    def mark_completed(
+        self,
+        city_codes: list[str],
+        *,
+        forecast_date: date,
+        checkpoint_day: date,
+    ) -> None:
+        with self._lock:
+            for city_code in city_codes:
+                self._completed_on[(city_code, forecast_date)] = checkpoint_day
+
+    def mark_local_tomorrow(
+        self,
+        city_map: dict[str, City],
+        *,
+        now_utc: datetime,
+    ) -> None:
+        checkpoint_day = now_utc.date()
+        with self._lock:
+            for city_code, city in city_map.items():
+                forecast_date = _get_city_local_tomorrow(city, now_utc=now_utc)
+                self._completed_on[(city_code, forecast_date)] = checkpoint_day
+
+
+def _weather_interval_env_var(source: WeatherSource) -> str:
+    return f"WEATHER_{source}_POLL_INTERVAL_SECONDS"
+
+
+def _parse_poll_interval_seconds(
+    raw_value: str,
+    *,
+    env_var: str,
+    fallback_seconds: int,
+) -> int:
+    try:
+        interval_seconds = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "weather_poll_interval_invalid",
+            env_var=env_var,
+            raw_value=raw_value,
+            fallback_seconds=fallback_seconds,
+        )
+        return fallback_seconds
+
+    if not (_MIN_WEATHER_POLL_INTERVAL_SECONDS <= interval_seconds <= _MAX_WEATHER_POLL_INTERVAL_SECONDS):
+        logger.warning(
+            "weather_poll_interval_out_of_bounds",
+            env_var=env_var,
+            raw_value=raw_value,
+            min_seconds=_MIN_WEATHER_POLL_INTERVAL_SECONDS,
+            max_seconds=_MAX_WEATHER_POLL_INTERVAL_SECONDS,
+            fallback_seconds=fallback_seconds,
+        )
+        return fallback_seconds
+
+    return interval_seconds
+
+
+def _get_weather_poll_interval_seconds(source: WeatherSource) -> int:
+    default_env_var = "WEATHER_DEFAULT_POLL_INTERVAL_SECONDS"
+    default_seconds = _DEFAULT_WEATHER_POLL_INTERVAL_SECONDS
+    default_raw = os.environ.get(default_env_var)
+    if default_raw is not None:
+        default_seconds = _parse_poll_interval_seconds(
+            default_raw,
+            env_var=default_env_var,
+            fallback_seconds=_DEFAULT_WEATHER_POLL_INTERVAL_SECONDS,
+        )
+
+    source_env_var = _weather_interval_env_var(source)
+    source_raw = os.environ.get(source_env_var)
+    if source_raw is None:
+        return default_seconds
+
+    return _parse_poll_interval_seconds(
+        source_raw,
+        env_var=source_env_var,
+        fallback_seconds=default_seconds,
+    )
+
+
 # ---------------------------------------------------------------------------
 # APScheduler job wrappers
 #
@@ -185,30 +294,60 @@ def _kalshi_discovery_wrapper(
     kalshi_client: KalshiClient,
     city_map: dict[str, City],
     cycle_id_gen: CycleIdGenerator,
+    discovery_checkpoint: DiscoveryCheckpoint | None = None,
     full_backfill: bool = False,
 ) -> None:
     run_id = cycle_id_gen.get()
+    now_utc = _utc_now()
     # full_backfill=True passes forecast_date=None to discover all open
     # markets (not just tomorrow), catching multi-day-out markets that
     # Kalshi may open after the cold-start backfill.
     if full_backfill:
-        run_kalshi_discovery(
+        completed = run_kalshi_discovery(
             kalshi_client=kalshi_client,
             city_map=city_map,
             session_factory=get_session,
             forecast_date=None,
             run_id=run_id,
         )
+        if completed and discovery_checkpoint is not None:
+            discovery_checkpoint.mark_local_tomorrow(city_map, now_utc=now_utc)
         return
 
-    for forecast_date, batch_city_map in _group_cities_by_kalshi_target_date(city_map):
-        run_kalshi_discovery(
+    checkpoint_day = now_utc.date()
+    for forecast_date, batch_city_map in _group_cities_by_kalshi_target_date(
+        city_map,
+        now_utc=now_utc,
+    ):
+        pending_city_map = batch_city_map
+        if discovery_checkpoint is not None:
+            pending_city_map = discovery_checkpoint.filter_pending(
+                batch_city_map,
+                forecast_date=forecast_date,
+                checkpoint_day=checkpoint_day,
+            )
+            if not pending_city_map:
+                logger.debug(
+                    "kalshi_discovery_checkpoint_skip",
+                    forecast_date=str(forecast_date),
+                    city_count=len(batch_city_map),
+                    run_id=run_id,
+                )
+                continue
+
+        completed = run_kalshi_discovery(
             kalshi_client=kalshi_client,
-            city_map=batch_city_map,
+            city_map=pending_city_map,
             session_factory=get_session,
             forecast_date=forecast_date,
             run_id=run_id,
         )
+        if completed and discovery_checkpoint is not None:
+            discovery_checkpoint.mark_completed(
+                list(pending_city_map.keys()),
+                forecast_date=forecast_date,
+                checkpoint_day=checkpoint_day,
+            )
 
 
 def _kalshi_snapshots_wrapper(
@@ -325,18 +464,22 @@ def _run_scheduled(
             during the cold-start phase triggers a graceful exit.
     """
 
+    discovery_checkpoint = DiscoveryCheckpoint()
+
     # Cold-start backfill: discover all open markets (today + tomorrow)
     # so today's already-active markets aren't missed on fresh deployment.
     if kalshi_client is not None and not shutdown_event.is_set():
         startup_run_id = generate_correlation_id()
         logger.info("cold_start_discovery", run_id=startup_run_id)
-        run_kalshi_discovery(
+        completed = run_kalshi_discovery(
             kalshi_client=kalshi_client,
             city_map=city_map,
             session_factory=get_session,
             forecast_date=None,
             run_id=startup_run_id,
         )
+        if completed:
+            discovery_checkpoint.mark_local_tomorrow(city_map, now_utc=_utc_now())
 
     if shutdown_event.is_set():
         logger.info("shutdown_before_scheduler_start")
@@ -350,14 +493,20 @@ def _run_scheduled(
     two_hour_cycle = CycleIdGenerator(interval_seconds=2 * 3600)
     five_min_cycle = CycleIdGenerator(interval_seconds=5 * 60)
     daily_cycle = CycleIdGenerator(interval_seconds=24 * 3600)
+    weather_cycle_gens: dict[int, CycleIdGenerator] = {}
 
-    # Weather jobs: one per source, every 2 hours, run immediately (Decision #13)
+    # Weather jobs: one per source, run immediately, with per-source intervals.
     for client in weather_clients:
+        interval_seconds = _get_weather_poll_interval_seconds(client.source)
+        cycle_id_gen = weather_cycle_gens.setdefault(
+            interval_seconds,
+            CycleIdGenerator(interval_seconds=interval_seconds),
+        )
         scheduler.add_job(  # type: ignore[reportUnknownMemberType]
             _weather_job_wrapper,
             "interval",
-            hours=2,
-            kwargs={"client": client, "city_map": city_map, "cycle_id_gen": two_hour_cycle},
+            seconds=interval_seconds,
+            kwargs={"client": client, "city_map": city_map, "cycle_id_gen": cycle_id_gen},
             id=f"weather_{client.source}",
             name=f"Weather ingestion: {client.source}",
             max_instances=1,
@@ -370,7 +519,12 @@ def _run_scheduled(
             _kalshi_discovery_wrapper,
             "interval",
             hours=2,
-            kwargs={"kalshi_client": kalshi_client, "city_map": city_map, "cycle_id_gen": two_hour_cycle},
+            kwargs={
+                "kalshi_client": kalshi_client,
+                "city_map": city_map,
+                "cycle_id_gen": two_hour_cycle,
+                "discovery_checkpoint": discovery_checkpoint,
+            },
             id="kalshi_discovery",
             name="Kalshi market discovery",
             max_instances=1,
@@ -387,6 +541,7 @@ def _run_scheduled(
                 "kalshi_client": kalshi_client,
                 "city_map": city_map,
                 "cycle_id_gen": daily_cycle,
+                "discovery_checkpoint": discovery_checkpoint,
                 "full_backfill": True,
             },
             id="kalshi_discovery_full",

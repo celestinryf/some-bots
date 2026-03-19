@@ -5,10 +5,10 @@ Decision #12: Failure injection — verify per-city error isolation.
 """
 
 import uuid
-from collections.abc import Callable, Generator
-from contextlib import AbstractContextManager, contextmanager
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from shared.config.errors import WeatherApiError
 from shared.db.enums import WeatherSource
@@ -53,6 +53,8 @@ def _make_forecast_result(
 
 def _mock_session_factory(
     mock_session: MagicMock,
+    *,
+    exit_error: Exception | None = None,
 ) -> Callable[[], AbstractContextManager[MagicMock]]:
     """Create a session factory that yields the given mock session.
 
@@ -63,9 +65,17 @@ def _mock_session_factory(
     mock_session.begin_nested.return_value.__enter__ = MagicMock(return_value=None)
     mock_session.begin_nested.return_value.__exit__ = MagicMock(return_value=False)
 
-    @contextmanager
-    def factory() -> Generator[MagicMock, None, None]:
-        yield mock_session
+    class _SessionContext(AbstractContextManager[MagicMock]):
+        def __enter__(self) -> MagicMock:
+            return mock_session
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            if exit_error is not None:
+                raise exit_error
+            return False
+
+    def factory() -> AbstractContextManager[MagicMock]:
+        return _SessionContext()
 
     return factory
 
@@ -288,6 +298,36 @@ class TestRunWeatherIngestion:
 
         # Function completed without raising
         mock_client.fetch_forecast.assert_called_once()
+
+    def test_commit_failure_is_logged_and_suppressed(self) -> None:
+        """Session commit/context failures should not crash the ingestion run."""
+        mock_client = MagicMock()
+        mock_client.source = WeatherSource.NWS
+        mock_client.inter_request_delay = 0.0
+        mock_client.fetch_forecast.return_value = _make_forecast_result()
+
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 1
+        mock_session.execute.return_value = mock_result
+
+        with patch("src.ingestion.weather.logger.error") as mock_log_error:
+            run_weather_ingestion(
+                client=mock_client,
+                city_map={"NYC": _make_city("NYC")},
+                session_factory=_mock_session_factory(
+                    mock_session,
+                    exit_error=RuntimeError("commit failed"),
+                ),
+                forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+                run_id="test-run-commit-failure",
+                sleep_fn=_noop_sleep,
+            )
+
+        mock_client.fetch_forecast.assert_called_once()
+        mock_session.execute.assert_called_once()
+        mock_log_error.assert_called_once()
+        assert mock_log_error.call_args.args[0] == "weather_ingestion_session_failed"
 
     def test_empty_city_map_is_noop(self) -> None:
         mock_client = MagicMock()

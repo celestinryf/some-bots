@@ -5,11 +5,11 @@ and mock session factories (Decision #9: DI via function arguments).
 """
 
 import uuid
-from collections.abc import Callable, Generator
-from contextlib import AbstractContextManager, contextmanager
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from shared.config.errors import KalshiApiError
 from shared.db.enums import MarketStatus, MarketType
@@ -36,6 +36,7 @@ def _make_city(code: str = "NYC") -> City:
     city.id = uuid.uuid4()
     city.name = f"Test {code}"
     city.kalshi_ticker_prefix = code
+    city.timezone = "America/New_York"
     city.lat = 40.7
     city.lon = -74.0
     return city  # type: ignore[return-value]
@@ -43,10 +44,20 @@ def _make_city(code: str = "NYC") -> City:
 
 def _mock_session_factory(
     mock_session: MagicMock,
+    *,
+    exit_error: Exception | None = None,
 ) -> Callable[[], AbstractContextManager[MagicMock]]:
-    @contextmanager
-    def factory() -> Generator[MagicMock, None, None]:
-        yield mock_session
+    class _SessionContext(AbstractContextManager[MagicMock]):
+        def __enter__(self) -> MagicMock:
+            return mock_session
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            if exit_error is not None:
+                raise exit_error
+            return False
+
+    def factory() -> AbstractContextManager[MagicMock]:
+        return _SessionContext()
 
     return factory
 
@@ -173,6 +184,30 @@ class TestRunKalshiDiscovery:
 
         assert mock_session.execute.call_count == 2
 
+    def test_commit_failure_is_logged_and_suppressed(self) -> None:
+        mock_kalshi = MagicMock(spec=KalshiClient)
+        mock_kalshi.discover_markets.return_value = [
+            _make_discovered_market("NYC", "KXHIGHNYC-26MAR17-T72"),
+        ]
+
+        mock_session = MagicMock()
+
+        with patch("src.ingestion.kalshi.logger.error") as mock_log_error:
+            run_kalshi_discovery(
+                kalshi_client=mock_kalshi,
+                city_map={"NYC": _make_city("NYC")},
+                session_factory=_mock_session_factory(
+                    mock_session,
+                    exit_error=RuntimeError("commit failed"),
+                ),
+                run_id="test-run-commit-failure",
+            )
+
+        mock_kalshi.discover_markets.assert_called_once()
+        mock_session.execute.assert_called_once()
+        mock_log_error.assert_called_once()
+        assert mock_log_error.call_args.args[0] == "kalshi_discovery_session_failed"
+
 
 # ---------------------------------------------------------------------------
 # Snapshot tests
@@ -182,6 +217,7 @@ class TestRunKalshiDiscovery:
 def _make_mock_kalshi_market(
     ticker: str = "KXHIGHNYC-26MAR17-T72",
     forecast_date: datetime | None = None,
+    city_timezone: str = "America/New_York",
 ) -> MagicMock:
     """Create a mock KalshiMarket ORM object."""
     m = MagicMock(spec=KalshiMarket)
@@ -189,6 +225,8 @@ def _make_mock_kalshi_market(
     m.ticker = ticker
     m.status = MarketStatus.ACTIVE
     m.forecast_date = forecast_date or datetime(2026, 3, 17, tzinfo=timezone.utc)
+    m.city = _make_city("CITY")
+    m.city.timezone = city_timezone
     return m
 
 
@@ -443,6 +481,67 @@ class TestRunKalshiSettlements:
             session_factory=_mock_session_factory(mock_session),
             run_id="test-run-4",
         )
+
+    def test_west_coast_market_not_checked_until_local_day_passes(self) -> None:
+        mock_kalshi = MagicMock(spec=KalshiClient)
+        mock_market = _make_mock_kalshi_market(
+            ticker="KXHIGHSFO-26MAR17-T72",
+            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            city_timezone="America/Los_Angeles",
+        )
+
+        mock_session = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_market]
+        mock_execute = MagicMock()
+        mock_execute.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_execute
+
+        class _FrozenDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):  # type: ignore[override]
+                frozen = cls(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+                return frozen if tz is None else frozen.astimezone(tz)
+
+        with patch("src.ingestion.kalshi.datetime", _FrozenDateTime):
+            run_kalshi_settlements(
+                kalshi_client=mock_kalshi,
+                session_factory=_mock_session_factory(mock_session),
+                run_id="test-run-local-date-cutoff",
+            )
+
+        mock_kalshi.check_settlements.assert_not_called()
+
+    def test_invalid_city_timezone_is_logged_and_safely_returns(self) -> None:
+        mock_kalshi = MagicMock(spec=KalshiClient)
+        mock_market = _make_mock_kalshi_market(
+            ticker="KXHIGHBAD-26MAR17-T72",
+            forecast_date=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            city_timezone="Bad/Timezone",
+        )
+
+        mock_session = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_market]
+        mock_execute = MagicMock()
+        mock_execute.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_execute
+
+        with patch("src.ingestion.kalshi.logger.error") as mock_log_error:
+            run_kalshi_settlements(
+                kalshi_client=mock_kalshi,
+                session_factory=_mock_session_factory(mock_session),
+                run_id="test-run-bad-timezone",
+            )
+
+        mock_kalshi.check_settlements.assert_not_called()
+        mock_log_error.assert_called_once()
+        assert mock_log_error.call_args.args[0] == "kalshi_settlements_timezone_filter_failed"
+        assert mock_log_error.call_args.kwargs["run_id"] == "test-run-bad-timezone"
+        assert mock_log_error.call_args.kwargs["correlation_id"]
+        assert mock_log_error.call_args.kwargs["ticker"] == "KXHIGHBAD-26MAR17-T72"
+        assert mock_log_error.call_args.kwargs["city_timezone"] == "Bad/Timezone"
+        assert mock_log_error.call_args.kwargs["error_type"] == "ZoneInfoNotFoundError"
 
 
 # ---------------------------------------------------------------------------

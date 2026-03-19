@@ -14,9 +14,11 @@ import signal
 import sys
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import FrameType
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from dotenv import load_dotenv
@@ -68,6 +70,68 @@ def get_forecast_date() -> datetime:
     return tomorrow
 
 
+def _utc_now() -> datetime:
+    """Return the current UTC time.
+
+    Split out for deterministic tests around UTC/local day boundaries.
+    """
+    return datetime.now(timezone.utc)
+
+
+def _get_city_local_tomorrow(city: City, *, now_utc: datetime | None = None) -> date:
+    """Return the city's local tomorrow calendar date."""
+    current_utc = now_utc or _utc_now()
+    local_now = current_utc.astimezone(ZoneInfo(city.timezone))
+    return local_now.date() + timedelta(days=1)
+
+
+def _get_city_forecast_datetime(
+    city: City,
+    *,
+    now_utc: datetime | None = None,
+) -> datetime:
+    """Return the city's target local-tomorrow date anchored at midnight UTC."""
+    target_date = _get_city_local_tomorrow(city, now_utc=now_utc)
+    return datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        tzinfo=timezone.utc,
+    )
+
+
+def _group_cities_by_weather_target_date(
+    city_map: dict[str, City],
+    *,
+    now_utc: datetime | None = None,
+) -> list[tuple[datetime, dict[str, City]]]:
+    """Group cities by the UTC-anchored datetime for each city's local tomorrow."""
+    current_utc = now_utc or _utc_now()
+    grouped: dict[datetime, dict[str, City]] = defaultdict(dict)
+
+    for ticker_code, city in city_map.items():
+        forecast_date = _get_city_forecast_datetime(city, now_utc=current_utc)
+        grouped[forecast_date][ticker_code] = city
+
+    return sorted(grouped.items(), key=lambda item: item[0])
+
+
+def _group_cities_by_kalshi_target_date(
+    city_map: dict[str, City],
+    *,
+    now_utc: datetime | None = None,
+) -> list[tuple[date, dict[str, City]]]:
+    """Group cities by the local-tomorrow calendar date used for Kalshi discovery."""
+    current_utc = now_utc or _utc_now()
+    grouped: dict[date, dict[str, City]] = defaultdict(dict)
+
+    for ticker_code, city in city_map.items():
+        forecast_date = _get_city_local_tomorrow(city, now_utc=current_utc)
+        grouped[forecast_date][ticker_code] = city
+
+    return sorted(grouped.items(), key=lambda item: item[0])
+
+
 class CycleIdGenerator:
     """Generates a shared run_id per scheduling cycle.
 
@@ -106,14 +170,14 @@ def _weather_job_wrapper(
     cycle_id_gen: CycleIdGenerator,
 ) -> None:
     run_id = cycle_id_gen.get()
-    forecast_date = get_forecast_date()
-    run_weather_ingestion(
-        client=client,
-        city_map=city_map,
-        session_factory=get_session,
-        forecast_date=forecast_date,
-        run_id=run_id,
-    )
+    for forecast_date, batch_city_map in _group_cities_by_weather_target_date(city_map):
+        run_weather_ingestion(
+            client=client,
+            city_map=batch_city_map,
+            session_factory=get_session,
+            forecast_date=forecast_date,
+            run_id=run_id,
+        )
 
 
 def _kalshi_discovery_wrapper(
@@ -127,14 +191,24 @@ def _kalshi_discovery_wrapper(
     # full_backfill=True passes forecast_date=None to discover all open
     # markets (not just tomorrow), catching multi-day-out markets that
     # Kalshi may open after the cold-start backfill.
-    forecast_date = None if full_backfill else get_forecast_date().date()
-    run_kalshi_discovery(
-        kalshi_client=kalshi_client,
-        city_map=city_map,
-        session_factory=get_session,
-        forecast_date=forecast_date,
-        run_id=run_id,
-    )
+    if full_backfill:
+        run_kalshi_discovery(
+            kalshi_client=kalshi_client,
+            city_map=city_map,
+            session_factory=get_session,
+            forecast_date=None,
+            run_id=run_id,
+        )
+        return
+
+    for forecast_date, batch_city_map in _group_cities_by_kalshi_target_date(city_map):
+        run_kalshi_discovery(
+            kalshi_client=kalshi_client,
+            city_map=batch_city_map,
+            session_factory=get_session,
+            forecast_date=forecast_date,
+            run_id=run_id,
+        )
 
 
 def _kalshi_snapshots_wrapper(
@@ -186,21 +260,27 @@ def _run_once(
 ) -> None:
     """Run all jobs once synchronously, then return."""
     run_id = generate_correlation_id()
-    forecast_date = get_forecast_date()
+    now_utc = _utc_now()
+    weather_batches = _group_cities_by_weather_target_date(city_map, now_utc=now_utc)
+    forecast_dates = [
+        str(forecast_date)
+        for forecast_date, _batch_city_map in weather_batches
+    ]
     logger.info(
         "run_once_start",
         run_id=run_id,
-        forecast_date=str(forecast_date),
+        forecast_dates=forecast_dates,
     )
 
     for client in weather_clients:
-        run_weather_ingestion(
-            client=client,
-            city_map=city_map,
-            session_factory=get_session,
-            forecast_date=forecast_date,
-            run_id=run_id,
-        )
+        for forecast_date, batch_city_map in weather_batches:
+            run_weather_ingestion(
+                client=client,
+                city_map=batch_city_map,
+                session_factory=get_session,
+                forecast_date=forecast_date,
+                run_id=run_id,
+            )
 
     if kalshi_client is not None:
         # Discover all open markets (today + tomorrow) to avoid cold-start gaps

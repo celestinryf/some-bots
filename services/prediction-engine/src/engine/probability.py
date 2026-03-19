@@ -43,6 +43,12 @@ class BracketDef:
                 "market_id must be a non-empty string",
                 source="probability",
             )
+        for name, val in [("low", self.low), ("high", self.high)]:
+            if val is not None and (val.is_nan() or val.is_infinite()):
+                raise ValidationError(
+                    f"Bracket {name} must be finite, got {val}",
+                    source="probability",
+                )
         if self.low is None and self.high is None:
             raise ValidationError(
                 "Bracket must have at least one bound (low or high)",
@@ -231,26 +237,28 @@ def map_brackets(
 
 def verify_probability_sum(
     probs: dict[str, float],
-    tolerance: float = 0.01,
+    tolerance: Decimal | float = 0.01,
 ) -> bool:
     """Verify that bracket probabilities sum to approximately 1.0.
 
     Args:
         probs: Non-empty dict of bracket_key → probability.
         tolerance: Maximum allowed deviation from 1.0 (must be in (0, 1)).
+            Accepts Decimal (from PredictionConfig) or float.
 
     Returns:
         True if sum is within tolerance of 1.0.
         False if probs is empty (empty set cannot sum to 1.0).
     """
-    if tolerance <= 0 or tolerance >= 1:
+    tol_f = float(tolerance)
+    if tol_f <= 0 or tol_f >= 1:
         raise ValueError(f"tolerance must be in (0, 1), got {tolerance}")
 
     if not probs:
         return False
 
     total = sum(probs.values())
-    return abs(total - 1.0) <= tolerance
+    return abs(total - 1.0) <= tol_f
 
 
 def build_probability_distribution(
@@ -258,7 +266,7 @@ def build_probability_distribution(
     brackets: list[BracketDef],
     source_temps: dict[str, Decimal],
     std_dev_floor: Decimal,
-    probability_sum_tolerance: float = 0.01,
+    probability_sum_tolerance: Decimal | float = 0.01,
 ) -> dict[str, Any]:
     """Build a complete probability distribution JSONB payload.
 

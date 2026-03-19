@@ -68,6 +68,22 @@ class TestBracketDef:
         with pytest.raises(ValidationError, match="non-empty"):
             BracketDef(low=Decimal("65"), high=Decimal("66"), market_id="")
 
+    def test_nan_low_raises(self) -> None:
+        with pytest.raises(ValidationError, match="finite"):
+            BracketDef(low=Decimal("NaN"), high=Decimal("70"), market_id="m1")
+
+    def test_nan_high_raises(self) -> None:
+        with pytest.raises(ValidationError, match="finite"):
+            BracketDef(low=Decimal("65"), high=Decimal("NaN"), market_id="m1")
+
+    def test_inf_low_raises(self) -> None:
+        with pytest.raises(ValidationError, match="finite"):
+            BracketDef(low=Decimal("Infinity"), high=Decimal("70"), market_id="m1")
+
+    def test_inf_high_raises(self) -> None:
+        with pytest.raises(ValidationError, match="finite"):
+            BracketDef(low=Decimal("65"), high=Decimal("Infinity"), market_id="m1")
+
 
 # ---------------------------------------------------------------------------
 # compute_ensemble_mean

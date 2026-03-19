@@ -24,6 +24,13 @@ def _clamp(value: Decimal, low: Decimal, high: Decimal) -> Decimal:
     return max(low, min(value, high))
 
 
+def _validate_finite_decimals(values: list[Decimal], context: str) -> None:
+    """Raise ValueError if any Decimal is NaN or Infinite."""
+    for v in values:
+        if v.is_nan() or v.is_infinite():
+            raise ValueError(f"{context}: value must be finite, got {v}")
+
+
 _SCORE_MIN = Decimal("1")
 _SCORE_MAX = Decimal("10")
 
@@ -49,6 +56,8 @@ def forecast_spread_score(temps: list[Decimal]) -> Decimal:
         Risk score from 1 to 10. Returns 1 if fewer than 2 sources
         (can't compute spread, not a risk signal).
     """
+    _validate_finite_decimals(temps, "forecast_spread_score")
+
     if len(temps) < 2:
         return _SCORE_MIN
 
@@ -77,12 +86,12 @@ def source_agreement_score(
     Measures directional agreement: how many sources predict a temperature
     that falls within the given bracket range.
 
-    Mapping:
-        4/4 agree → 1 (all sources in bracket)
-        3/4 agree → 3
-        2/4 agree → 5
-        1/4 agree → 8
-        0/4 agree → 10
+    Mapping (fraction of sources in bracket):
+        >= 90% agree → 1 (nearly all sources in bracket)
+        >= 70% agree → 3
+        >= 50% agree → 5
+        >= 25% agree → 8
+        < 25% agree  → 10
 
     Args:
         temps: Temperature values from all sources.
@@ -92,6 +101,9 @@ def source_agreement_score(
     Returns:
         Risk score from 1 to 10.
     """
+    bounds = [b for b in [bracket_low, bracket_high] if b is not None]
+    _validate_finite_decimals(temps + bounds, "source_agreement_score")
+
     if not temps:
         return _SCORE_MAX
 
@@ -139,6 +151,8 @@ def city_accuracy_score(city_accuracy: Decimal | None) -> Decimal:
     if city_accuracy is None:
         return Decimal("5")
 
+    _validate_finite_decimals([city_accuracy], "city_accuracy_score")
+
     if city_accuracy >= Decimal("0.80"):
         return Decimal("1")
     if city_accuracy >= Decimal("0.70"):
@@ -170,6 +184,9 @@ def liquidity_score(volume: int) -> Decimal:
     Returns:
         Risk score from 1 to 10.
     """
+    if isinstance(volume, bool):
+        raise TypeError(f"volume must be an int, got {type(volume).__name__}")
+
     if volume < 0:
         raise ValueError(f"volume must be non-negative, got {volume}")
 

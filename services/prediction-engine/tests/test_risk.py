@@ -72,6 +72,10 @@ class TestForecastSpreadScore:
         result = forecast_spread_score([Decimal("-8"), Decimal("-4")])
         assert result == Decimal("6")
 
+    def test_nan_temp_raises(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            forecast_spread_score([Decimal("70"), Decimal("NaN")])
+
 
 # ---------------------------------------------------------------------------
 # source_agreement_score
@@ -112,6 +116,18 @@ class TestSourceAgreementScore:
         temps = [Decimal("76"), Decimal("77"), Decimal("80")]
         assert source_agreement_score(temps, Decimal("75"), None) == Decimal("1")
 
+    def test_nan_temp_raises(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            source_agreement_score(
+                [Decimal("NaN")], Decimal("65"), Decimal("70")
+            )
+
+    def test_nan_bracket_bound_raises(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            source_agreement_score(
+                [Decimal("67")], Decimal("NaN"), Decimal("70")
+            )
+
 
 # ---------------------------------------------------------------------------
 # city_accuracy_score
@@ -135,6 +151,10 @@ class TestCityAccuracyScore:
     )
     def test_accuracy_score(self, accuracy: Decimal | None, expected: Decimal) -> None:
         assert city_accuracy_score(accuracy) == expected
+
+    def test_nan_accuracy_raises(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            city_accuracy_score(Decimal("NaN"))
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +181,10 @@ class TestLiquidityScore:
     )
     def test_liquidity_score(self, volume: int, expected: Decimal) -> None:
         assert liquidity_score(volume) == expected
+
+    def test_bool_volume_raises(self) -> None:
+        with pytest.raises(TypeError, match="int"):
+            liquidity_score(True)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

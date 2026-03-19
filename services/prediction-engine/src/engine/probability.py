@@ -300,6 +300,14 @@ def build_probability_distribution(
                 source="probability",
             )
 
+    for source_name, temp_val in source_temps.items():
+        temp_f = float(temp_val)
+        if not math.isfinite(temp_f):
+            raise PredictionError(
+                f"Source '{source_name}' has non-finite temperature: {temp_val}",
+                source="probability",
+            )
+
     mean = compute_ensemble_mean(temps)
     std = compute_ensemble_std(temps, std_dev_floor)
 
@@ -317,15 +325,6 @@ def build_probability_distribution(
         )
 
     prob_sum = sum(bracket_probs.values()) if bracket_probs else 0.0
-
-    # Validate source_temps values are finite
-    for source_name, temp_val in source_temps.items():
-        temp_f = float(temp_val)
-        if not math.isfinite(temp_f):
-            raise PredictionError(
-                f"Source '{source_name}' has non-finite temperature: {temp_val}",
-                source="probability",
-            )
 
     return {
         "brackets": bracket_probs,

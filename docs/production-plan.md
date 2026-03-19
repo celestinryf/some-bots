@@ -709,7 +709,7 @@ class PaperTradeError(WeatherBotError): pass
 - [ ] Risk scoring system (6 factors, weighted)
 - [ ] Paper trade auto-creation for every recommendation
 - [ ] Unit tests for all prediction and recommendation math
-- [ ] Manual validation: compare output to the email example format
+- [x] Manual validation: compare output to the email example format (completed 2026-03-19, see `docs/sprint2-manual-validation-email-format.md`)
 
 ### Sprint 3: Paper Trading & Email
 - [ ] Paper trading engine: fixed-size mode

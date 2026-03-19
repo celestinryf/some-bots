@@ -340,7 +340,7 @@ def compute_risk_score(
                 f"Factor '{key}' score must be in [{_SCORE_MIN}, {_SCORE_MAX}], got {score}"
             )
 
-    weighted_sum = sum(
+    weighted_sum: Decimal = sum(
         (factors[key] * weights[key] for key in weights),
         Decimal("0"),
     )

@@ -153,6 +153,11 @@ def city_accuracy_score(city_accuracy: Decimal | None) -> Decimal:
 
     _validate_finite_decimals([city_accuracy], "city_accuracy_score")
 
+    if city_accuracy < Decimal("0") or city_accuracy > Decimal("1"):
+        raise ValueError(
+            f"city_accuracy must be in [0, 1], got {city_accuracy}"
+        )
+
     if city_accuracy >= Decimal("0.80"):
         return Decimal("1")
     if city_accuracy >= Decimal("0.70"):
@@ -184,7 +189,7 @@ def liquidity_score(volume: int) -> Decimal:
     Returns:
         Risk score from 1 to 10.
     """
-    if isinstance(volume, bool):
+    if not isinstance(volume, int) or isinstance(volume, bool):
         raise TypeError(f"volume must be an int, got {type(volume).__name__}")
 
     if volume < 0:
@@ -229,6 +234,9 @@ def bracket_edge_score(
     Returns:
         Risk score from 1 to 10.
     """
+    values = [predicted_temp] + [b for b in [bracket_low, bracket_high] if b is not None]
+    _validate_finite_decimals(values, "bracket_edge_score")
+
     distances: list[Decimal] = []
 
     if bracket_low is not None:

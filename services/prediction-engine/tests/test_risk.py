@@ -156,6 +156,15 @@ class TestCityAccuracyScore:
         with pytest.raises(ValueError, match="finite"):
             city_accuracy_score(Decimal("NaN"))
 
+    @pytest.mark.parametrize(
+        "accuracy",
+        [Decimal("-0.1"), Decimal("1.1"), Decimal("1.5")],
+        ids=["negative", "above_one", "well_above_one"],
+    )
+    def test_out_of_range_accuracy_raises(self, accuracy: Decimal) -> None:
+        with pytest.raises(ValueError):
+            city_accuracy_score(accuracy)
+
 
 # ---------------------------------------------------------------------------
 # liquidity_score
@@ -185,6 +194,15 @@ class TestLiquidityScore:
     def test_bool_volume_raises(self) -> None:
         with pytest.raises(TypeError, match="int"):
             liquidity_score(True)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        "volume",
+        [10.0, Decimal("10"), "10"],
+        ids=["float", "decimal", "str"],
+    )
+    def test_non_int_volume_raises(self, volume: object) -> None:
+        with pytest.raises(TypeError, match="int"):
+            liquidity_score(volume)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +241,24 @@ class TestBracketEdgeScore:
 
     def test_both_none_returns_min(self) -> None:
         assert bracket_edge_score(Decimal("70"), None, None) == Decimal("1")
+
+    @pytest.mark.parametrize(
+        "predicted_temp, bracket_low, bracket_high",
+        [
+            (Decimal("NaN"), Decimal("69"), Decimal("72")),
+            (Decimal("70"), Decimal("Infinity"), Decimal("72")),
+            (Decimal("70"), Decimal("69"), Decimal("-Infinity")),
+        ],
+        ids=["predicted_nan", "low_inf", "high_neg_inf"],
+    )
+    def test_non_finite_inputs_raise_value_error(
+        self,
+        predicted_temp: Decimal,
+        bracket_low: Decimal | None,
+        bracket_high: Decimal | None,
+    ) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            bracket_edge_score(predicted_temp, bracket_low, bracket_high)
 
 
 # ---------------------------------------------------------------------------

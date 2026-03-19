@@ -251,7 +251,7 @@ def verify_probability_sum(
         False if probs is empty (empty set cannot sum to 1.0).
     """
     tol_f = float(tolerance)
-    if tol_f <= 0 or tol_f >= 1:
+    if not math.isfinite(tol_f) or tol_f <= 0 or tol_f >= 1:
         raise ValueError(f"tolerance must be in (0, 1), got {tolerance}")
 
     if not probs:

@@ -393,15 +393,26 @@ def run_kalshi_settlements(
         )
         return
 
-    unsettled = [
-        market
-        for market in unsettled_candidates
-        if _forecast_day_has_passed(
-            forecast_date=market.forecast_date,
-            city_timezone=market.city.timezone,
-            now=now,
+    unsettled = []
+    try:
+        for market in unsettled_candidates:
+            if _forecast_day_has_passed(
+                forecast_date=market.forecast_date,
+                city_timezone=market.city.timezone,
+                now=now,
+            ):
+                unsettled.append(market)
+    except Exception as exc:
+        logger.error(
+            "kalshi_settlements_timezone_filter_failed",
+            ticker=getattr(market, "ticker", None),
+            city_timezone=getattr(getattr(market, "city", None), "timezone", None),
+            error=str(exc),
+            error_type=type(exc).__name__,
+            correlation_id=correlation_id,
+            run_id=run_id,
         )
-    ]
+        return
 
     if not unsettled:
         logger.debug(

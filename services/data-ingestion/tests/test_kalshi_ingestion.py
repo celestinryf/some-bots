@@ -512,6 +512,37 @@ class TestRunKalshiSettlements:
 
         mock_kalshi.check_settlements.assert_not_called()
 
+    def test_invalid_city_timezone_is_logged_and_safely_returns(self) -> None:
+        mock_kalshi = MagicMock(spec=KalshiClient)
+        mock_market = _make_mock_kalshi_market(
+            ticker="KXHIGHBAD-26MAR17-T72",
+            forecast_date=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            city_timezone="Bad/Timezone",
+        )
+
+        mock_session = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_market]
+        mock_execute = MagicMock()
+        mock_execute.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_execute
+
+        with patch("src.ingestion.kalshi.logger.error") as mock_log_error:
+            run_kalshi_settlements(
+                kalshi_client=mock_kalshi,
+                session_factory=_mock_session_factory(mock_session),
+                run_id="test-run-bad-timezone",
+            )
+
+        mock_kalshi.check_settlements.assert_not_called()
+        mock_log_error.assert_called_once()
+        assert mock_log_error.call_args.args[0] == "kalshi_settlements_timezone_filter_failed"
+        assert mock_log_error.call_args.kwargs["run_id"] == "test-run-bad-timezone"
+        assert mock_log_error.call_args.kwargs["correlation_id"]
+        assert mock_log_error.call_args.kwargs["ticker"] == "KXHIGHBAD-26MAR17-T72"
+        assert mock_log_error.call_args.kwargs["city_timezone"] == "Bad/Timezone"
+        assert mock_log_error.call_args.kwargs["error_type"] == "ZoneInfoNotFoundError"
+
 
 # ---------------------------------------------------------------------------
 # Snapshot retention cleanup tests

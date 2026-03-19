@@ -341,6 +341,27 @@ class TestVerifyProbabilitySum:
         with pytest.raises(ValueError, match="tolerance"):
             verify_probability_sum({"a": 0.5, "b": 0.5}, tolerance=1.0)
 
+    @pytest.mark.parametrize(
+        "tolerance",
+        [
+            Decimal("NaN"),
+            float("nan"),
+            Decimal("Infinity"),
+            float("inf"),
+            float("-inf"),
+        ],
+        ids=[
+            "decimal_nan",
+            "float_nan",
+            "decimal_inf",
+            "float_inf",
+            "float_neg_inf",
+        ],
+    )
+    def test_non_finite_tolerance_raises(self, tolerance: Decimal | float) -> None:
+        with pytest.raises(ValueError, match="tolerance"):
+            verify_probability_sum({"a": 0.5, "b": 0.5}, tolerance=tolerance)
+
 
 # ---------------------------------------------------------------------------
 # build_probability_distribution

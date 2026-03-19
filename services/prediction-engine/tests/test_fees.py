@@ -113,6 +113,14 @@ class TestKalshiTakerFee:
         with pytest.raises(TypeError, match="Decimal"):
             kalshi_taker_fee(1, 0.50)  # type: ignore[arg-type]
 
+    def test_nan_price_raises(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            kalshi_taker_fee(1, Decimal("NaN"))
+
+    def test_inf_price_raises(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            kalshi_taker_fee(1, Decimal("Infinity"))
+
 
 # ---------------------------------------------------------------------------
 # expected_value — parameterized with hand-computed values
@@ -192,6 +200,18 @@ class TestExpectedValue:
     def test_float_fee_raises_type_error(self) -> None:
         with pytest.raises(TypeError, match="Decimal"):
             expected_value(Decimal("0.5"), Decimal("0.50"), 0.02)  # type: ignore[arg-type]
+
+    def test_nan_model_prob_raises(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            expected_value(Decimal("NaN"), Decimal("0.50"), Decimal("0.02"))
+
+    def test_nan_cost_raises(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            expected_value(Decimal("0.50"), Decimal("NaN"), Decimal("0.02"))
+
+    def test_nan_fee_raises(self) -> None:
+        with pytest.raises(ValueError, match="finite"):
+            expected_value(Decimal("0.50"), Decimal("0.50"), Decimal("NaN"))
 
     def test_ev_near_max_cost(self) -> None:
         # prob=1.0, cost=0.99, fee=0.01 → EV = 1.00 - 0.99 - 0.01 = 0.00

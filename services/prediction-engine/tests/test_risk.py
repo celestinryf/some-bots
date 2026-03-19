@@ -230,9 +230,9 @@ class TestLeadTimeScore:
     def test_three_plus_days(self) -> None:
         assert lead_time_score(date(2026, 3, 22), date(2026, 3, 19)) == Decimal("8")
 
-    def test_past_date(self) -> None:
-        # forecast_date is in the past — treat as same-day
-        assert lead_time_score(date(2026, 3, 18), date(2026, 3, 19)) == Decimal("1")
+    def test_past_date_raises(self) -> None:
+        with pytest.raises(ValueError, match="before current_date"):
+            lead_time_score(date(2026, 3, 18), date(2026, 3, 19))
 
 
 # ---------------------------------------------------------------------------

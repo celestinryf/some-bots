@@ -257,10 +257,19 @@ def lead_time_score(
 
     Returns:
         Risk score from 1 to 10.
+
+    Raises:
+        ValueError: If forecast_date is before current_date (past dates
+            are likely a bug in the caller).
     """
     days_out = (forecast_date - current_date).days
 
-    if days_out <= 0:
+    if days_out < 0:
+        raise ValueError(
+            f"forecast_date ({forecast_date}) is before current_date ({current_date})"
+        )
+
+    if days_out == 0:
         return Decimal("1")
     if days_out == 1:
         return Decimal("2")
@@ -291,7 +300,7 @@ def compute_risk_score(
     if set(factors.keys()) != set(weights.keys()):
         missing_factors = set(weights.keys()) - set(factors.keys())
         extra_factors = set(factors.keys()) - set(weights.keys())
-        parts = []
+        parts: list[str] = []
         if missing_factors:
             parts.append(f"missing factors: {sorted(missing_factors)}")
         if extra_factors:
@@ -315,8 +324,8 @@ def compute_risk_score(
             )
 
     weighted_sum = sum(
-        factors[key] * weights[key]
-        for key in weights
+        (factors[key] * weights[key] for key in weights),
+        Decimal("0"),
     )
 
     clamped = _clamp(weighted_sum, _SCORE_MIN, _SCORE_MAX)

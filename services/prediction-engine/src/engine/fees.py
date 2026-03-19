@@ -35,14 +35,18 @@ def kalshi_taker_fee(contracts: int, price: Decimal) -> Decimal:
         ValueError: If contracts < 1 or price is outside (0, 1).
         TypeError: If contracts is not an int.
     """
-    if not isinstance(contracts, int) or isinstance(contracts, bool):
+    # Runtime type guards — intentional defense-in-depth for untyped callers
+    if not isinstance(contracts, int) or isinstance(contracts, bool):  # type: ignore[redundant-expr]
         raise TypeError(f"contracts must be an int, got {type(contracts).__name__}")
 
     if contracts < 1:
         raise ValueError(f"contracts must be >= 1, got {contracts}")
 
-    if not isinstance(price, Decimal):
+    if not isinstance(price, Decimal):  # type: ignore[unnecessary-isinstance]
         raise TypeError(f"price must be a Decimal, got {type(price).__name__}")
+
+    if price.is_nan() or price.is_infinite():
+        raise ValueError(f"price must be finite, got {price}")
 
     if price <= 0 or price >= 1:
         raise ValueError(
@@ -81,12 +85,17 @@ def expected_value(
     Raises:
         ValueError: If model_prob is outside [0, 1] or cost/fee are negative.
     """
-    if not isinstance(model_prob, Decimal):
+    # Runtime type guards — intentional defense-in-depth for untyped callers
+    if not isinstance(model_prob, Decimal):  # type: ignore[unnecessary-isinstance]
         raise TypeError(f"model_prob must be a Decimal, got {type(model_prob).__name__}")
-    if not isinstance(cost, Decimal):
+    if not isinstance(cost, Decimal):  # type: ignore[unnecessary-isinstance]
         raise TypeError(f"cost must be a Decimal, got {type(cost).__name__}")
-    if not isinstance(fee, Decimal):
+    if not isinstance(fee, Decimal):  # type: ignore[unnecessary-isinstance]
         raise TypeError(f"fee must be a Decimal, got {type(fee).__name__}")
+
+    for name, val in [("model_prob", model_prob), ("cost", cost), ("fee", fee)]:
+        if val.is_nan() or val.is_infinite():
+            raise ValueError(f"{name} must be finite, got {val}")
 
     if model_prob < 0 or model_prob > 1:
         raise ValueError(

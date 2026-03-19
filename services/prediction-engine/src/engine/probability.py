@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from scipy.stats import norm
+from scipy.stats import norm  # type: ignore[import-untyped]
 
 from shared.config.errors import PredictionError, ValidationError
 
@@ -183,15 +183,17 @@ def bracket_probability(
 
     if low is None:
         # Lower edge bracket: P(X < high)
-        return float(norm.cdf(high, loc=mean, scale=std))
+        return float(norm.cdf(high, loc=mean, scale=std))  # type: ignore[no-untyped-call]
 
     if high is None:
         # Upper edge bracket: P(X >= low)
-        return float(1.0 - norm.cdf(low, loc=mean, scale=std))
+        return float(1.0 - norm.cdf(low, loc=mean, scale=std))  # type: ignore[no-untyped-call]
 
     # Normal bracket: P(low <= X < high)
     # Clamp to 0.0 in case of floating-point imprecision or direct call with low > high
-    prob = float(norm.cdf(high, loc=mean, scale=std) - norm.cdf(low, loc=mean, scale=std))
+    prob = float(  # type: ignore[no-untyped-call]
+        norm.cdf(high, loc=mean, scale=std) - norm.cdf(low, loc=mean, scale=std)
+    )
     return max(0.0, prob)
 
 

@@ -581,6 +581,33 @@ class TestFetchSnapshots:
         with pytest.raises(KalshiApiError):
             client.fetch_snapshots(["KXHIGHNYC-26MAR16-T62"])
 
+    @pytest.mark.parametrize(
+        "raised_exc",
+        [
+            AuthenticationError(401, "bad key"),
+            RateLimitError(429, "slow down"),
+            KalshiAPIError(500, "server error"),
+        ],
+    )
+    def test_fallback_wraps_single_ticker_errors(self, raised_exc: Exception) -> None:
+        client, mock = _make_kalshi_client()
+        call_count = 0
+
+        def side_effect(*, tickers: list[str]) -> list[Any]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ResourceNotFoundError(404, "batch missing ticker")
+            raise raised_exc
+
+        mock.get_markets.side_effect = side_effect
+
+        with pytest.raises(KalshiApiError) as excinfo:
+            client.fetch_snapshots(["KXHIGHNYC-26MAR16-T62", "KXHIGHNYC-26MAR16-T63"])
+
+        assert call_count == 2
+        assert isinstance(excinfo.value.__cause__, type(raised_exc))
+
     def test_empty_tickers_returns_empty(self) -> None:
         client, mock = _make_kalshi_client()
 
@@ -690,6 +717,33 @@ class TestCheckSettlements:
 
         with pytest.raises(KalshiApiError, match="Failed to check settlements"):
             client.check_settlements(["T1"])
+
+    @pytest.mark.parametrize(
+        "raised_exc",
+        [
+            AuthenticationError(401, "bad key"),
+            RateLimitError(429, "slow down"),
+            KalshiAPIError(500, "server error"),
+        ],
+    )
+    def test_fallback_wraps_single_ticker_errors(self, raised_exc: Exception) -> None:
+        client, mock = _make_kalshi_client()
+        call_count = 0
+
+        def side_effect(*, tickers: list[str]) -> list[Any]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ResourceNotFoundError(404, "batch missing ticker")
+            raise raised_exc
+
+        mock.get_markets.side_effect = side_effect
+
+        with pytest.raises(KalshiApiError) as excinfo:
+            client.check_settlements(["T1", "T2"])
+
+        assert call_count == 2
+        assert isinstance(excinfo.value.__cause__, type(raised_exc))
 
     def test_empty_tickers_returns_empty(self) -> None:
         client, mock = _make_kalshi_client()

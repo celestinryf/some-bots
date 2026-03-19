@@ -270,6 +270,18 @@ def _fetch_markets(client: PyKalshiClient, **kwargs: Any) -> list[PyKalshiMarket
     return cast(list[PyKalshiMarket], list(result))
 
 
+def _wrap_market_fetch_error(
+    *,
+    operation: str,
+    exc: Exception,
+    correlation_id: str | None,
+) -> KalshiApiError:
+    return KalshiApiError(
+        f"Failed to {operation}: {exc}",
+        correlation_id=correlation_id,
+    )
+
+
 # ---------------------------------------------------------------------------
 # KalshiClient
 # ---------------------------------------------------------------------------
@@ -487,9 +499,16 @@ class KalshiClient:
                             ticker=ticker,
                             correlation_id=correlation_id,
                         )
+                    except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
+                        raise _wrap_market_fetch_error(
+                            operation="fetch market snapshots",
+                            exc=exc,
+                            correlation_id=correlation_id,
+                        ) from exc
             except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
-                raise KalshiApiError(
-                    f"Failed to fetch market snapshots: {exc}",
+                raise _wrap_market_fetch_error(
+                    operation="fetch market snapshots",
+                    exc=exc,
                     correlation_id=correlation_id,
                 ) from exc
 
@@ -562,9 +581,16 @@ class KalshiClient:
                             ticker=ticker,
                             correlation_id=correlation_id,
                         )
+                    except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
+                        raise _wrap_market_fetch_error(
+                            operation="check settlements",
+                            exc=exc,
+                            correlation_id=correlation_id,
+                        ) from exc
             except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
-                raise KalshiApiError(
-                    f"Failed to check settlements: {exc}",
+                raise _wrap_market_fetch_error(
+                    operation="check settlements",
+                    exc=exc,
                     correlation_id=correlation_id,
                 ) from exc
 

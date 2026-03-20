@@ -13,6 +13,7 @@ Create Date: 2026-03-17 00:02:00.000000+00:00
 from typing import Sequence, Union
 
 from alembic import op
+from sqlalchemy import text
 
 
 # revision identifiers, used by Alembic.
@@ -23,6 +24,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Deduplicate existing rows before tightening the constraint.
+    # Keep the row with the latest issued_at per (source, city_id,
+    # forecast_date) group; delete the rest.
+    op.execute(text("""
+        DELETE FROM weather_forecasts
+        WHERE id NOT IN (
+            SELECT DISTINCT ON (source, city_id, forecast_date) id
+            FROM weather_forecasts
+            ORDER BY source, city_id, forecast_date,
+                     issued_at DESC, created_at DESC
+        )
+    """))
+
     # Drop old constraint and index that included issued_at
     op.drop_constraint('uq_forecast_dedup', 'weather_forecasts', type_='unique')
     op.drop_index('ix_forecasts_city_date_source', table_name='weather_forecasts')

@@ -559,18 +559,6 @@ class TestRecommendationCycleErrorIsolation:
                 "brackets": {},  # Missing bracket key → RecommendationError
             },
         )
-        # m2: good prediction
-        make_prediction(
-            city_id=_CITY,
-            probability_distribution={
-                "brackets": {"[70.0000, 75.0000)": 0.65},
-                "mean": 72.0,
-                "std_dev": 2.0,
-                "source_temps": {"NWS": 72.0},
-                "sum_check": 1.0,
-            },
-        )
-
         s1 = make_snapshot(
             market_id=m1.id,
             yes_ask=Decimal("0.3500"),

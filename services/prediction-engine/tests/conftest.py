@@ -34,7 +34,7 @@ def db_engine() -> Generator[Engine, None, None]:
         db_port=int(os.environ.get("DB_PORT", "5432")),
         db_name=os.environ.get("DB_NAME", "kalshi_weather_test"),
         db_user=os.environ.get("DB_USER", "kalshi"),
-        db_password=os.environ.get("DB_PASSWORD", "k4lsh1_w34th3r_b0t_2026"),
+        db_password=os.environ.get("DB_PASSWORD", "test"),
     )
     if settings.db_name != "kalshi_weather_test":
         raise RuntimeError(

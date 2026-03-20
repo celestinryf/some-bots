@@ -201,7 +201,8 @@ class TestWeatherForecast:
         db_session.add(forecast)
         db_session.flush()
         assert forecast.created_at is not None
-        assert (datetime.now(UTC) - forecast.created_at.replace(tzinfo=UTC)).total_seconds() < 5
+        assert forecast.created_at.tzinfo is not None
+        assert (datetime.now(UTC) - forecast.created_at).total_seconds() < 5
 
     def test_nullable_temps(self, db_session: Session) -> None:
         city = _make_city(db_session)

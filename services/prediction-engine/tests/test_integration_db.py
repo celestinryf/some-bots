@@ -659,13 +659,13 @@ class TestUniqueConstraints:
         run_prediction_cycle(config, factory)
         db_session.flush()
 
-        run_recommendation_cycle(config, factory, now_fn=lambda: _NOW)
+        first_stats = run_recommendation_cycle(config, factory, now_fn=lambda: _NOW)
         db_session.flush()
         first_rec_count = db_session.scalar(
             select(func.count()).select_from(Recommendation)
         )
 
-        run_recommendation_cycle(config, factory, now_fn=lambda: _NOW)
+        second_stats = run_recommendation_cycle(config, factory, now_fn=lambda: _NOW)
         db_session.flush()
         second_rec_count = db_session.scalar(
             select(func.count()).select_from(Recommendation)
@@ -673,3 +673,7 @@ class TestUniqueConstraints:
 
         # Count should not grow
         assert first_rec_count == second_rec_count
+        # Second run should reuse, not create
+        assert first_stats["recommendations_created"] >= 1
+        assert second_stats["recommendations_created"] == 0
+        assert second_stats["recommendations_reused"] >= 1

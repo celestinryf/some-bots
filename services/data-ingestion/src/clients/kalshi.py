@@ -100,36 +100,89 @@ class SettledMarket:
 # ---------------------------------------------------------------------------
 
 
-def _to_decimal(value: str | None) -> Decimal | None:
-    """Convert a dollar-string to Decimal, or None."""
+def _parse_numeric_decimal(
+    value: str | float | int | Decimal | None,
+) -> Decimal | None:
+    """Parse a finite numeric value into Decimal, or None."""
     if value is None:
         return None
+    if isinstance(value, bool):
+        return None
+
+    raw_value: str | int | Decimal
+    if isinstance(value, str):
+        raw_value = value.strip()
+        if raw_value == "":
+            return None
+    elif isinstance(value, float):
+        raw_value = str(value)
+    else:
+        raw_value = value
+
     try:
-        return Decimal(value)
-    except (InvalidOperation, ValueError):
+        parsed = Decimal(raw_value)
+    except (InvalidOperation, TypeError, ValueError):
         return None
-
-
-def _to_int(value: str | float | int | None) -> int | None:
-    """Convert a value to int, or None.  Handles '123.0' strings."""
-    if value is None:
+    if not parsed.is_finite():
         return None
-    try:
-        return int(float(value))
-    except (ValueError, TypeError):
+    return parsed
+
+
+def _to_decimal(value: str | float | int | Decimal | None) -> Decimal | None:
+    """Convert a finite numeric input to Decimal, or None."""
+    return _parse_numeric_decimal(value)
+
+
+def _to_int(value: str | float | int | Decimal | None) -> int | None:
+    """Convert an integral finite numeric input to int, or None."""
+    parsed = _parse_numeric_decimal(value)
+    if parsed is None:
         return None
+    if parsed != parsed.to_integral_value():
+        return None
+    return int(parsed)
 
 
-def map_kalshi_status(kalshi_status: KalshiMarketStatus | None) -> MarketStatus:
+def map_kalshi_status(
+    kalshi_status: KalshiMarketStatus | None,
+    *,
+    ticker: str | None = None,
+    correlation_id: str | None = None,
+) -> MarketStatus:
     """Map pykalshi MarketStatus to our MarketStatus enum."""
-    if kalshi_status is None:
-        return MarketStatus.ACTIVE
-    val = kalshi_status.value
+    raw_status = None if kalshi_status is None else getattr(kalshi_status, "value", None)
+    if not isinstance(raw_status, str):
+        logger.error(
+            "kalshi_unknown_market_status",
+            ticker=ticker,
+            raw_status=raw_status,
+            correlation_id=correlation_id,
+            alert="kalshi_unknown_market_status",
+        )
+        raise KalshiApiError(
+            "Kalshi market status was missing",
+            correlation_id=correlation_id,
+        )
+
+    val = raw_status.lower()
     if val in ("settled", "finalized", "determined"):
         return MarketStatus.SETTLED
     if val in ("closed", "inactive"):
         return MarketStatus.CLOSED
-    return MarketStatus.ACTIVE
+    if val in ("open", "active"):
+        return MarketStatus.ACTIVE
+
+    logger.error(
+        "kalshi_unknown_market_status",
+        ticker=ticker,
+        raw_status=raw_status,
+        correlation_id=correlation_id,
+        alert="kalshi_unknown_market_status",
+    )
+    raise KalshiApiError(
+        f"Unknown Kalshi market status: {raw_status!r}",
+        correlation_id=correlation_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +354,12 @@ class KalshiClient:
 
     def __init__(self, client: PyKalshiClient) -> None:
         self._client = client
+        self._last_discovery_had_errors = False
+
+    @property
+    def last_discovery_had_errors(self) -> bool:
+        """Whether the most recent discover_markets() call had series fetch errors."""
+        return self._last_discovery_had_errors
 
     @classmethod
     def from_settings(
@@ -384,6 +443,7 @@ class KalshiClient:
         """
         series_list = self.build_series_tickers(city_codes)
         discovered: list[DiscoveredMarket] = []
+        had_series_errors = False
 
         for series_ticker, city_code, market_type in series_list:
             try:
@@ -401,11 +461,12 @@ class KalshiClient:
                 )
                 continue
             except (AuthenticationError, RateLimitError, KalshiAPIError) as exc:
+                had_series_errors = True
                 logger.warning(
                     "kalshi_markets_fetch_failed",
                     series_ticker=series_ticker,
                     city=city_code,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
                     correlation_id=correlation_id,
                 )
                 continue
@@ -425,6 +486,15 @@ class KalshiClient:
                 if forecast_date is not None and mkt_date != forecast_date:
                     continue
 
+                try:
+                    status = map_kalshi_status(
+                        market.status,
+                        ticker=market.ticker,
+                        correlation_id=correlation_id,
+                    )
+                except KalshiApiError:
+                    continue
+
                 bracket_low, bracket_high, is_edge = parse_bracket(market.subtitle)
 
                 discovered.append(DiscoveredMarket(
@@ -442,7 +512,7 @@ class KalshiClient:
                     no_ask=_to_decimal(market.no_ask_dollars),
                     volume=_to_int(market.volume_fp),
                     open_interest=_to_int(market.open_interest_fp),
-                    status=map_kalshi_status(market.status),
+                    status=status,
                 ))
 
         logger.info(
@@ -450,8 +520,10 @@ class KalshiClient:
             cities_queried=len(city_codes or list(CITIES.keys())),
             markets_found=len(discovered),
             forecast_date=str(forecast_date) if forecast_date else "all",
+            had_series_errors=had_series_errors,
             correlation_id=correlation_id,
         )
+        self._last_discovery_had_errors = had_series_errors
 
         return discovered
 
@@ -595,7 +667,14 @@ class KalshiClient:
                 ) from exc
 
             for market in markets:
-                status = map_kalshi_status(market.status)
+                try:
+                    status = map_kalshi_status(
+                        market.status,
+                        ticker=market.ticker,
+                        correlation_id=correlation_id,
+                    )
+                except KalshiApiError:
+                    continue
                 if status in (MarketStatus.SETTLED, MarketStatus.CLOSED):
                     resolved.append(SettledMarket(
                         ticker=market.ticker,

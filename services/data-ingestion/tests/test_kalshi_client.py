@@ -68,6 +68,15 @@ class TestToDecimal:
     def test_empty_string_returns_none(self) -> None:
         assert _to_decimal("") is None
 
+    def test_bool_returns_none(self) -> None:
+        assert _to_decimal(True) is None
+
+    def test_nan_returns_none(self) -> None:
+        assert _to_decimal("NaN") is None
+
+    def test_infinity_returns_none(self) -> None:
+        assert _to_decimal("Infinity") is None
+
 
 class TestToInt:
     def test_int_value(self) -> None:
@@ -87,6 +96,15 @@ class TestToInt:
 
     def test_invalid_string_returns_none(self) -> None:
         assert _to_int("abc") is None
+
+    def test_fractional_string_returns_none(self) -> None:
+        assert _to_int("123.5") is None
+
+    def test_bool_returns_none(self) -> None:
+        assert _to_int(False) is None
+
+    def test_nan_returns_none(self) -> None:
+        assert _to_int("NaN") is None
 
 
 class TestMapKalshiStatus:
@@ -111,8 +129,16 @@ class TestMapKalshiStatus:
     def test_active(self) -> None:
         assert map_kalshi_status(KalshiMarketStatus.ACTIVE) == MarketStatus.ACTIVE
 
-    def test_none_defaults_active(self) -> None:
-        assert map_kalshi_status(None) == MarketStatus.ACTIVE
+    def test_none_raises(self) -> None:
+        with pytest.raises(KalshiApiError, match="missing"):
+            map_kalshi_status(None)
+
+    def test_unknown_status_raises(self) -> None:
+        class _UnknownStatus:
+            value = "mystery"
+
+        with pytest.raises(KalshiApiError, match="Unknown Kalshi market status"):
+            map_kalshi_status(_UnknownStatus())  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +525,14 @@ class TestDiscoverMarkets:
 
         assert result == []
 
+    def test_unknown_status_market_is_skipped(self) -> None:
+        client, mock = _make_kalshi_client()
+        mock.get_markets.return_value = [_make_mock_market(status=None)]
+
+        result = client.discover_markets(city_codes=["NYC"])
+
+        assert result == []
+
 
 # ---------------------------------------------------------------------------
 # KalshiClient.fetch_snapshots tests
@@ -752,6 +786,14 @@ class TestCheckSettlements:
 
         assert result == []
         mock.get_markets.assert_not_called()
+
+    def test_unknown_status_market_is_skipped(self) -> None:
+        client, mock = _make_kalshi_client()
+        mock.get_markets.return_value = [_make_mock_market(status=None)]
+
+        result = client.check_settlements(["T1"])
+
+        assert result == []
 
 
 # ---------------------------------------------------------------------------

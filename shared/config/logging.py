@@ -19,6 +19,7 @@ Usage:
 import datetime
 import uuid
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import structlog
 
@@ -38,13 +39,37 @@ _SENSITIVE_SUBSTRINGS: tuple[str, ...] = (
 )
 
 
+def _is_sensitive_key(key: str) -> bool:
+    return any(s in key.lower() for s in _SENSITIVE_SUBSTRINGS)
+
+
+def _redact_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: ("[REDACTED]" if _is_sensitive_key(key) else _redact_value(item))
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_value(item) for item in value)
+    if isinstance(value, str):
+        lower_value = value.lower()
+        if any(f"{token}=" in lower_value for token in _SENSITIVE_SUBSTRINGS):
+            return "[REDACTED]"
+        return sanitize_url(value)
+    return value
+
+
 def _redact_sensitive(
     logger: Any, method: str | None, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
     """Structlog processor that redacts sensitive field values."""
     for key in list(event_dict.keys()):
-        if any(s in key.lower() for s in _SENSITIVE_SUBSTRINGS):
+        if _is_sensitive_key(key):
             event_dict[key] = "[REDACTED]"
+            continue
+        event_dict[key] = _redact_value(event_dict[key])
     return event_dict
 
 
@@ -55,6 +80,80 @@ def _add_timestamp(
     if "timestamp" not in event_dict:
         event_dict["timestamp"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return event_dict
+
+
+def sanitize_url(url: str) -> str:
+    """Redact sensitive query parameters before they are logged."""
+    parsed = urlsplit(url)
+    if not parsed.query:
+        return url
+
+    sanitized_query = urlencode(
+        [
+            (key, "[REDACTED]" if _is_sensitive_key(key) else value)
+            for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        ],
+        doseq=True,
+    )
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, sanitized_query, parsed.fragment)
+    )
+
+
+def build_external_failure_context(
+    *,
+    source: str,
+    operation: str,
+    error: Exception | str,
+    error_category: str = "EXTERNAL_API_ERROR",
+    url: str | None = None,
+    http_status: int | None = None,
+    **context: Any,
+) -> dict[str, Any]:
+    """Build a normalized context payload for external/API failure logs."""
+    payload: dict[str, Any] = {
+        "error_category": error_category,
+        "source": source,
+        "operation": operation,
+        "error_message": str(error),
+    }
+    if url:
+        payload["url"] = sanitize_url(url)
+    if http_status is not None:
+        payload["http_status"] = http_status
+
+    for key, value in context.items():
+        if value is not None:
+            payload[key] = value
+
+    return payload
+
+
+def log_external_failure(
+    logger: structlog.stdlib.BoundLogger,
+    event: str,
+    *,
+    source: str,
+    operation: str,
+    error: Exception | str,
+    error_category: str = "EXTERNAL_API_ERROR",
+    url: str | None = None,
+    http_status: int | None = None,
+    **context: Any,
+) -> None:
+    """Emit a contract-consistent structured error log for external/API failures."""
+    logger.error(
+        event,
+        **build_external_failure_context(
+            source=source,
+            operation=operation,
+            error=error,
+            error_category=error_category,
+            url=url,
+            http_status=http_status,
+            **context,
+        ),
+    )
 
 
 def setup_logging(log_level: str = "INFO", json_output: bool | None = None) -> None:
@@ -69,7 +168,13 @@ def setup_logging(log_level: str = "INFO", json_output: bool | None = None) -> N
     import os
 
     if json_output is None:
-        json_output = os.environ.get("ENVIRONMENT", "development") == "production"
+        try:
+            from shared.config.settings import get_settings
+
+            json_output = get_settings().is_production
+        except Exception:
+            # Keep logging boot resilient even if settings fail validation early.
+            json_output = os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
 
     # Shared processors that run on every log line
     shared_processors: list[Any] = [

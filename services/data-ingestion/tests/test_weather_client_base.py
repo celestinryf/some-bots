@@ -82,6 +82,7 @@ def client(sleep_calls: list[float]) -> Generator[_StubWeatherClient, None, None
         max_retries=3,
         backoff_base=2.0,
         sleep_fn=sleep_calls.append,
+        jitter_fn=lambda low, high: (low + high) / 2,
     )
     yield c
     c.close()
@@ -155,7 +156,7 @@ class TestRetryBehavior:
         result = client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
         assert result.temp_high == 72.0
         assert route.call_count == 2
-        assert len(sleep_calls) == 1
+        assert sleep_calls == [0.5]
 
     @respx.mock
     def test_retry_on_500_then_success(self, client: _StubWeatherClient, forecast_date: datetime, sleep_calls: list[float]) -> None:
@@ -285,12 +286,11 @@ class TestBackoff:
 
     @respx.mock
     def test_backoff_delays(self, client: _StubWeatherClient, forecast_date: datetime, sleep_calls: list[float]) -> None:
-        """3 retries → sleep(1), sleep(2), sleep(4) with backoff_base=2."""
+        """3 retries use deterministic jitter over 1, 2, and 4 second ceilings."""
         respx.get(_STUB_URL).mock(return_value=httpx.Response(500))
         with pytest.raises(WeatherApiError):
             client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
-        # backoff_base^attempt: 2^0=1, 2^1=2, 2^2=4
-        assert sleep_calls == [1.0, 2.0, 4.0]
+        assert sleep_calls == [0.5, 1.0, 2.0]
 
     @respx.mock
     def test_no_sleep_after_last_attempt(self, client: _StubWeatherClient, forecast_date: datetime, sleep_calls: list[float]) -> None:
@@ -300,6 +300,34 @@ class TestBackoff:
             client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
         # 3 retries = 3 sleeps (none after last)
         assert len(sleep_calls) == 3
+
+    @respx.mock
+    def test_retry_after_header_overrides_jitter(self, client: _StubWeatherClient, forecast_date: datetime, sleep_calls: list[float]) -> None:
+        respx.get(_STUB_URL).mock(
+            side_effect=[
+                httpx.Response(429, headers={"Retry-After": "7"}),
+                httpx.Response(200, json={"high": 72.0, "low": 55.0}),
+            ]
+        )
+
+        result = client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
+
+        assert result.temp_high == 72.0
+        assert sleep_calls == [7.0]
+
+    @respx.mock
+    def test_invalid_retry_after_falls_back_to_jitter(self, client: _StubWeatherClient, forecast_date: datetime, sleep_calls: list[float]) -> None:
+        respx.get(_STUB_URL).mock(
+            side_effect=[
+                httpx.Response(503, headers={"Retry-After": "soon"}),
+                httpx.Response(200, json={"high": 72.0, "low": 55.0}),
+            ]
+        )
+
+        result = client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
+
+        assert result.temp_high == 72.0
+        assert sleep_calls == [0.5]
 
 
 # ---------------------------------------------------------------------------

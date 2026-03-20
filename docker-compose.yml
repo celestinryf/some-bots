@@ -18,6 +18,27 @@ services:
     ports:
       - "5432:5432"
 
+  db-migrator:
+    build:
+      context: .
+      dockerfile: services/data-ingestion/Dockerfile
+    env_file: .env
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - python
+      - -c
+      - |
+        from alembic import command
+        from alembic.config import Config
+        cfg = Config()
+        cfg.set_main_option("script_location", "/app/shared/db-migrations")
+        command.upgrade(cfg, "head")
+    restart: "no"
+
   data-ingestion:
     build:
       context: .
@@ -36,6 +57,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-migrator:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   prediction-engine:
@@ -43,11 +66,29 @@ services:
       context: .
       dockerfile: services/prediction-engine/Dockerfile
     env_file: .env
+    command: ["python", "-m", "src.main", "--role", "prediction"]
     networks:
       - backend
     depends_on:
       postgres:
         condition: service_healthy
+      db-migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  recommendation-engine:
+    build:
+      context: .
+      dockerfile: services/prediction-engine/Dockerfile
+    env_file: .env
+    entrypoint: ["python", "-m", "src.main", "--role", "recommendation"]
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrator:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   notification-service:
@@ -60,6 +101,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-migrator:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

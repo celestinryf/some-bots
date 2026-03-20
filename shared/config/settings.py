@@ -7,8 +7,29 @@ rather than reading os.environ directly — single source of truth, easy to test
 
 import os
 from dataclasses import dataclass
+from enum import StrEnum
 
 from sqlalchemy.engine import URL
+
+
+class Environment(StrEnum):
+    DEVELOPMENT = "development"
+    TEST = "test"
+    PRODUCTION = "production"
+
+
+def _parse_environment(raw: str | Environment) -> Environment:
+    if isinstance(raw, Environment):
+        return raw
+
+    normalized = raw.strip().lower()
+    try:
+        return Environment(normalized)
+    except ValueError as exc:
+        valid_values = ", ".join(environment.value for environment in Environment)
+        raise ValueError(
+            f"ENVIRONMENT must be one of: {valid_values}; got {raw!r}"
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -37,11 +58,14 @@ class Settings:
     jwt_secret: str = ""
 
     # App
-    environment: str = "development"
+    environment: Environment = Environment.DEVELOPMENT
     log_level: str = "INFO"
 
     def __post_init__(self) -> None:
-        if self.environment == "production":
+        environment = _parse_environment(self.environment)
+        object.__setattr__(self, "environment", environment)
+
+        if environment is Environment.PRODUCTION:
             missing = [
                 name
                 for name in (
@@ -78,7 +102,7 @@ class Settings:
 
     @property
     def is_production(self) -> bool:
-        return self.environment == "production"
+        return self.environment is Environment.PRODUCTION
 
 
 def _parse_db_port() -> int:
@@ -109,7 +133,7 @@ def _load_from_env() -> Settings:
         db_password=os.environ.get("DB_PASSWORD", ""),
         sendgrid_api_key=os.environ.get("SENDGRID_API_KEY", ""),
         jwt_secret=os.environ.get("JWT_SECRET", ""),
-        environment=os.environ.get("ENVIRONMENT", "development"),
+        environment=_parse_environment(os.environ.get("ENVIRONMENT", "development")),
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
     )
 

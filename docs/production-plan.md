@@ -24,6 +24,8 @@
 - Hybrid tech stack: Python for data/ML/recommendation logic, Spring Boot for web API only, Docker Compose on VPS
 - Paper trading tracks both fixed-size accuracy AND virtual portfolio performance
 - Kalshi API credentials already available (head start on market data ingestion)
+- Sprint 1 runtime topology is PostgreSQL + Python services (`data-ingestion`, `prediction-engine`, `notification-service`) in Docker Compose; web API and frontend remain later-sprint work
+- Sprint 1 Kalshi integration is REST-only polling for discovery, snapshots, and settlements; WebSocket streaming is deferred until a later sprint
 
 **Post-approval first steps:**
 1. Save this plan to Obsidian vault (`trading bots/weather/`) AND this repo (`docs/`)
@@ -53,7 +55,7 @@
 │                              │                                          │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │              KALSHI MARKET DATA (Python via pykalshi)             │  │
-│  │  WebSocket: real-time prices + settlements                        │  │
+│  │  REST polling in Sprint 1; WebSocket deferred                        │  │
 │  │  REST: market discovery, historical candlesticks, fallback        │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────┬──────────────────────────────────────────┘
@@ -151,12 +153,16 @@
 
 **Authentication:** RSA-PSS signed headers (KALSHI-ACCESS-KEY + signature + timestamp). Key pair generated in Kalshi dashboard (Account > Security > API Keys). Private key .pem file downloaded once. pykalshi handles signing automatically.
 
+**Sprint 1 implementation note:** use the REST endpoints only. Discovery runs every 2 hours, snapshots every 5 minutes, and settlement checks every 2 hours. WebSocket ingestion remains planned work, not current runtime behavior.
+
 **Market discovery pipeline:**
 1. `GET /series` with category filter → find all weather series tickers (e.g., `KXHIGHNY`, `KXLOWCHI`)
 2. `GET /events?series_ticker=X&with_nested_markets=true` → get all bracket markets per event, including strike ranges
 3. Map each series ticker → city → NWS station ID for forecast matching
 
 **Real-time data via WebSocket (preferred over polling):**
+Current sprint override: the deployed topology does not include a WebSocket listener. Use REST polling only and treat the WebSocket plan here as future work.
+
 - **`ticker` channel:** Subscribe to all weather market tickers. Receives real-time: last_price, yes_bid, yes_ask, volume, open_interest. Used for recommendation generation — lock entry price at the moment of recommendation.
 - **`market_lifecycle_v2` channel:** Receives settlement notifications in real-time (market `determined` with `result` and `settlement_value`). No need to poll for resolved markets.
 - **`trade` channel:** Trade execution notifications for volume/liquidity analysis.
@@ -514,6 +520,7 @@ System:
 - GitHub Actions pipeline:
   - On PR: lint + unit tests + build Docker images + **security scans**
   - On merge to main: build, push images, SSH deploy to VPS
+  - Nightly: PostgreSQL-backed integration run for migrations + ORM write-path coverage
 - Deployment: `docker compose pull && docker compose up -d` on VPS
 - **Dependency scanning:** Dependabot (auto-PRs for vulnerable deps) + `pip-audit --strict` in CI for Python + `npm audit --audit-level=high` for React
 - **Docker image scanning:** Trivy scans built images for OS-level CVEs, fails build on HIGH/CRITICAL
@@ -686,10 +693,9 @@ class PaperTradeError(WeatherBotError): pass
 - [ ] OpenWeatherMap API client + ingestion job (JSON, free 1M calls/mo)
 - [ ] pykalshi integration: auth setup (RSA-PSS key pair via mounted .pem file)
 - [ ] Kalshi market discovery: series → events → markets pipeline
-- [ ] Kalshi WebSocket client via pykalshi Feed: `ticker` channel for real-time prices
-- [ ] Kalshi WebSocket: `market_lifecycle_v2` channel for settlement notifications
 - [ ] Kalshi historical backfill: candlestick endpoints for settled weather markets
-- [ ] Kalshi REST fallback: snapshot polling for WebSocket reconnects
+- [ ] Kalshi runtime remains REST-only in Sprint 1 (discovery 2h / snapshots 5m / settlements 2h)
+- [ ] Kalshi WebSocket items are deferred to a later sprint (not part of current runtime)
 - [ ] Unit tests for all API clients, data validation, and error handling (verify correlation IDs flow through, error categories are correct)
 - [ ] Integration test: full ingestion cycle with real APIs
 - [ ] Verify all 44+ cities return valid data from all 4 weather sources
@@ -703,7 +709,7 @@ class PaperTradeError(WeatherBotError): pass
 - [ ] Risk scoring system (6 factors, weighted)
 - [ ] Paper trade auto-creation for every recommendation
 - [ ] Unit tests for all prediction and recommendation math
-- [ ] Manual validation: compare output to the email example format
+- [x] Manual validation: compare output to the email example format (completed 2026-03-19, see `docs/sprint2-manual-validation-email-format.md`)
 
 ### Sprint 3: Paper Trading & Email
 - [ ] Paper trading engine: fixed-size mode

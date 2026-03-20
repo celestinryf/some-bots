@@ -8,28 +8,15 @@ without a real database.  Integration tests for PostgreSQL-specific features
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
-from shared.db.enums import MarketStatus, MarketType
-from shared.db.models import (
-    KalshiMarket,
-    KalshiMarketSnapshot,
-    PaperTradeFixed,
-    Prediction,
-    Recommendation,
-    WeatherForecast,
-)
-
 from src.data.queries import (
     fetch_active_market_groups,
     fetch_all_source_temperatures,
-    fetch_latest_snapshot_map,
     fetch_markets_by_ids,
     fetch_predictions_for_model,
     fetch_source_temperatures,
@@ -40,9 +27,11 @@ from src.data.queries import (
 from src.engine.types import PredictionGroup
 from tests.factories import make_forecast, make_market, make_prediction
 
+from shared.db.enums import MarketType
+
 _CITY_A = uuid.UUID("00000000-0000-0000-0000-000000000001")
 _CITY_B = uuid.UUID("00000000-0000-0000-0000-000000000002")
-_DATE = datetime(2026, 3, 20, tzinfo=timezone.utc)
+_DATE = datetime(2026, 3, 20, tzinfo=UTC)
 
 
 def _mock_session() -> MagicMock:
@@ -61,17 +50,17 @@ class TestFetchSourceTemperatures:
         nws_latest = make_forecast(
             source="NWS",
             temp_high=Decimal("72.00"),
-            issued_at=datetime(2026, 3, 19, 18, 0, tzinfo=timezone.utc),
+            issued_at=datetime(2026, 3, 19, 18, 0, tzinfo=UTC),
         )
         nws_old = make_forecast(
             source="NWS",
             temp_high=Decimal("70.00"),
-            issued_at=datetime(2026, 3, 19, 6, 0, tzinfo=timezone.utc),
+            issued_at=datetime(2026, 3, 19, 6, 0, tzinfo=UTC),
         )
         vc = make_forecast(
             source="VC",
             temp_high=Decimal("74.00"),
-            issued_at=datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc),
+            issued_at=datetime(2026, 3, 19, 12, 0, tzinfo=UTC),
         )
 
         session = _mock_session()

@@ -5,7 +5,7 @@ Timeline endpoint provides daily forecasts with explicit tempmax/tempmin.
 $35/mo plan. API key passed as query parameter (no header auth supported).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from shared.config.errors import WeatherApiError
@@ -45,7 +45,10 @@ class VisualCrossingClient(WeatherClient):
             "elements": "datetime,tempmax,tempmin",
         }
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
+    def _parse_response(
+        self, data: dict[str, Any], city_code: str, forecast_date: datetime,
+        *, city_timezone: str | None = None,
+    ) -> ParsedForecast:
         """Parse Visual Crossing timeline response.
 
         Response has a `days` array with explicit `tempmax` and `tempmin`.
@@ -84,5 +87,5 @@ class VisualCrossingClient(WeatherClient):
             # Visual Crossing does not expose a model-run timestamp; use fetch
             # time as a best-effort proxy.  NWS and PirateWeather provide real
             # issuance times.
-            issued_at=datetime.now(timezone.utc),
+            issued_at=datetime.now(UTC),
         )

@@ -6,7 +6,7 @@ $2/mo plan. API key passed via header; URL path requires a placeholder
 in the key slot (Dark Sky legacy route: /forecast/{key}/{lat},{lon}).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from shared.config.errors import WeatherApiError
@@ -49,13 +49,16 @@ class PirateWeatherClient(WeatherClient):
     # PirateWeather's default endpoint returns a 7-day forecast window.
     _MAX_LOOKAHEAD_DAYS = 6
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
+    def _parse_response(
+        self, data: dict[str, Any], city_code: str, forecast_date: datetime,
+        *, city_timezone: str | None = None,
+    ) -> ParsedForecast:
         """Parse PirateWeather forecast response.
 
         Response has `daily.data` array with `temperatureHigh` and `temperatureLow`.
         Match target date by comparing Unix timestamp.
         """
-        days_ahead = (forecast_date.date() - datetime.now(timezone.utc).date()).days
+        days_ahead = (forecast_date.date() - datetime.now(UTC).date()).days
         if days_ahead > self._MAX_LOOKAHEAD_DAYS:
             raise WeatherApiError(
                 f"PirateWeather default window covers {self._MAX_LOOKAHEAD_DAYS} days; "
@@ -87,7 +90,7 @@ class PirateWeatherClient(WeatherClient):
         for day in daily_data:
             day_ts = day.get("time")
             if day_ts is not None:
-                day_date = datetime.fromtimestamp(day_ts, tz=timezone.utc).date()
+                day_date = datetime.fromtimestamp(day_ts, tz=UTC).date()
                 if day_date == target_date:
                     matched_day = day
                     break
@@ -100,11 +103,11 @@ class PirateWeatherClient(WeatherClient):
             )
 
         # Parse issued_at from currently.time (server-side timestamp)
-        issued_at = datetime.now(timezone.utc)
+        issued_at = datetime.now(UTC)
         currently_time = data.get("currently", {}).get("time")
         if currently_time is not None:
             try:
-                issued_at = datetime.fromtimestamp(currently_time, tz=timezone.utc)
+                issued_at = datetime.fromtimestamp(currently_time, tz=UTC)
             except (ValueError, OSError):
                 pass
 

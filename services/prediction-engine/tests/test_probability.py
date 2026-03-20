@@ -10,15 +10,12 @@ Covers:
     - Hypothesis property-based invariant checks
 """
 
-import math
 from decimal import Decimal
 
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from scipy.stats import norm
-
-from shared.config.errors import PredictionError, ValidationError
 from src.engine.probability import (
     BracketDef,
     bracket_probability,
@@ -29,6 +26,7 @@ from src.engine.probability import (
     verify_probability_sum,
 )
 
+from shared.config.errors import PredictionError, ValidationError
 
 # ---------------------------------------------------------------------------
 # BracketDef

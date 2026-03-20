@@ -9,7 +9,7 @@ Rate limit: ~1 request per second (inter_request_delay=1.0).
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -149,7 +149,10 @@ class NwsClient(WeatherClient):
         """Return the cached forecast URL. Gridpoint is already resolved by fetch_forecast."""
         return self._gridpoint_cache[city_code]
 
-    def _parse_response(self, data: dict[str, Any], city_code: str, forecast_date: datetime, *, city_timezone: str | None = None) -> ParsedForecast:
+    def _parse_response(
+        self, data: dict[str, Any], city_code: str, forecast_date: datetime,
+        *, city_timezone: str | None = None,
+    ) -> ParsedForecast:
         """Parse NWS forecast response.
 
         NWS returns 12-hour periods:
@@ -208,7 +211,7 @@ class NwsClient(WeatherClient):
                 temp_low = temp_val
 
         # Parse issued_at from updateTime (NWS provides real model issuance time)
-        issued_at = datetime.now(timezone.utc)
+        issued_at = datetime.now(UTC)
         issued_at_str = data.get("properties", {}).get("updateTime")
         if issued_at_str:
             try:

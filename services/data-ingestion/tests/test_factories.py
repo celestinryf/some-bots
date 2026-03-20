@@ -7,14 +7,14 @@ so we test the actual factory logic without mocking client constructors.
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from shared.config.settings import Settings
-from shared.db.enums import WeatherSource
-
 from src.clients.nws import NwsClient
 from src.clients.openweathermap import OpenWeatherMapClient
 from src.clients.pirate_weather import PirateWeatherClient
 from src.clients.visual_crossing import VisualCrossingClient
 from src.ingestion.factories import close_clients, create_kalshi_client, create_weather_clients
+
+from shared.config.settings import Settings
+from shared.db.enums import WeatherSource
 
 
 def _noop_sleep(seconds: float) -> None:

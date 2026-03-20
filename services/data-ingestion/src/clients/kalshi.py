@@ -14,13 +14,17 @@ Architecture decisions (Sprint 1 review):
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, cast
 
 from pykalshi import (
     KalshiClient as PyKalshiClient,
+)
+from pykalshi import (
     Market as PyKalshiMarket,
+)
+from pykalshi import (
     MarketStatus as KalshiMarketStatus,
 )
 from pykalshi.exceptions import (
@@ -549,7 +553,7 @@ class KalshiClient:
         Raises:
             KalshiApiError: On API communication failures.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         snapshots: list[MarketSnapshot] = []
 
         for i in range(0, len(tickers), _BATCH_SIZE):

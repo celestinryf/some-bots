@@ -11,9 +11,7 @@ Covers:
 from decimal import Decimal
 
 import pytest
-
 from src.engine.fees import expected_value, kalshi_taker_fee
-
 
 # ---------------------------------------------------------------------------
 # kalshi_taker_fee — parameterized with hand-computed values

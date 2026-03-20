@@ -3,10 +3,10 @@
 import importlib.util
 import sys
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
-from unittest.mock import MagicMock
 from types import ModuleType
+from unittest.mock import MagicMock
 
 from shared.db.enums import WeatherSource
 from shared.db.models import City
@@ -64,7 +64,7 @@ class TestWeatherTargetDates:
         monkeypatch.setattr(
             main,
             "_utc_now",
-            lambda: datetime(2026, 3, 18, 7, 30, tzinfo=timezone.utc),
+            lambda: datetime(2026, 3, 18, 7, 30, tzinfo=UTC),
         )
 
         run_weather_ingestion = MagicMock()
@@ -88,18 +88,18 @@ class TestWeatherTargetDates:
         assert run_weather_ingestion.call_count == 2
 
         first_call = run_weather_ingestion.call_args_list[0].kwargs
-        assert first_call["forecast_date"] == datetime(2026, 3, 18, tzinfo=timezone.utc)
+        assert first_call["forecast_date"] == datetime(2026, 3, 18, tzinfo=UTC)
         assert set(first_call["city_map"]) == {"HNL"}
 
         second_call = run_weather_ingestion.call_args_list[1].kwargs
-        assert second_call["forecast_date"] == datetime(2026, 3, 19, tzinfo=timezone.utc)
+        assert second_call["forecast_date"] == datetime(2026, 3, 19, tzinfo=UTC)
         assert set(second_call["city_map"]) == {"NYC"}
 
     def test_run_once_uses_city_local_tomorrow_batches(self, monkeypatch) -> None:
         monkeypatch.setattr(
             main,
             "_utc_now",
-            lambda: datetime(2026, 3, 18, 7, 30, tzinfo=timezone.utc),
+            lambda: datetime(2026, 3, 18, 7, 30, tzinfo=UTC),
         )
         monkeypatch.setattr(main, "generate_correlation_id", lambda: "run-1")
 
@@ -121,11 +121,11 @@ class TestWeatherTargetDates:
         assert run_weather_ingestion.call_count == 2
 
         first_call = run_weather_ingestion.call_args_list[0].kwargs
-        assert first_call["forecast_date"] == datetime(2026, 3, 18, tzinfo=timezone.utc)
+        assert first_call["forecast_date"] == datetime(2026, 3, 18, tzinfo=UTC)
         assert set(first_call["city_map"]) == {"HNL"}
 
         second_call = run_weather_ingestion.call_args_list[1].kwargs
-        assert second_call["forecast_date"] == datetime(2026, 3, 19, tzinfo=timezone.utc)
+        assert second_call["forecast_date"] == datetime(2026, 3, 19, tzinfo=UTC)
         assert set(second_call["city_map"]) == {"NYC"}
 
 
@@ -136,7 +136,7 @@ class TestKalshiTargetDates:
         monkeypatch.setattr(
             main,
             "_utc_now",
-            lambda: datetime(2026, 3, 18, 7, 30, tzinfo=timezone.utc),
+            lambda: datetime(2026, 3, 18, 7, 30, tzinfo=UTC),
         )
 
         run_kalshi_discovery = MagicMock()
@@ -197,7 +197,7 @@ class TestKalshiTargetDates:
         monkeypatch.setattr(
             main,
             "_utc_now",
-            lambda: datetime(2026, 3, 18, 7, 30, tzinfo=timezone.utc),
+            lambda: datetime(2026, 3, 18, 7, 30, tzinfo=UTC),
         )
 
         run_kalshi_discovery = MagicMock(return_value=True)
@@ -232,8 +232,8 @@ class TestKalshiTargetDates:
     ) -> None:
         times = iter(
             [
-                datetime(2026, 3, 18, 7, 30, tzinfo=timezone.utc),
-                datetime(2026, 3, 18, 11, 30, tzinfo=timezone.utc),
+                datetime(2026, 3, 18, 7, 30, tzinfo=UTC),
+                datetime(2026, 3, 18, 11, 30, tzinfo=UTC),
             ]
         )
         monkeypatch.setattr(main, "_utc_now", lambda: next(times))

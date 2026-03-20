@@ -5,7 +5,6 @@ Tests for PredictionConfig validation and loading.
 from decimal import Decimal
 
 import pytest
-
 from src.config import PredictionConfig, _env_decimal, _env_int, load_prediction_config
 
 

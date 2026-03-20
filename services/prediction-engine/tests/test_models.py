@@ -7,14 +7,12 @@ from decimal import Decimal
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
-
-from shared.config.errors import PredictionError
-
 from src.config import PredictionConfig
 from src.models.equal_weight import EqualWeightModel
 from src.models.performance_weighted import PerformanceWeightedModel
 from src.models.selector import select_model
 
+from shared.config.errors import PredictionError
 
 # ---------------------------------------------------------------------------
 # Helpers

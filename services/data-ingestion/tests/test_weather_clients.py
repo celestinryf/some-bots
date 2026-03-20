@@ -10,22 +10,21 @@ Uses respx to mock HTTP responses with realistic JSON fixtures.
 
 import json
 from collections.abc import Generator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 import respx
-
-from shared.config.errors import ValidationError, WeatherApiError
-from shared.db.enums import WeatherSource
-
 from src.clients.models import ForecastResult
 from src.clients.nws import NwsClient
 from src.clients.openweathermap import OpenWeatherMapClient
 from src.clients.pirate_weather import PirateWeatherClient
 from src.clients.visual_crossing import VisualCrossingClient
+
+from shared.config.errors import ValidationError, WeatherApiError
+from shared.db.enums import WeatherSource
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -58,7 +57,7 @@ class TestNwsClient:
 
     @pytest.fixture()
     def forecast_date(self) -> datetime:
-        return datetime(2026, 3, 16, tzinfo=timezone.utc)
+        return datetime(2026, 3, 16, tzinfo=UTC)
 
     @respx.mock
     def test_happy_path_full_assertions(self, client: NwsClient, forecast_date: datetime) -> None:
@@ -201,7 +200,7 @@ class TestNwsClient:
             return_value=httpx.Response(200, json=forecast_data)
         )
 
-        far_future = datetime(2027, 1, 1, tzinfo=timezone.utc)
+        far_future = datetime(2027, 1, 1, tzinfo=UTC)
         with pytest.raises(ValidationError, match="neither temp_high nor temp_low"):
             client.fetch_forecast("NYC", 40.7, -74.0, far_future)
 
@@ -294,7 +293,7 @@ class TestNwsOvernightPeriods:
         ],
     )
     def test_period_matching(self, client: NwsClient, periods: list[dict[str, Any]], expected_high: float | None, expected_low: float | None) -> None:
-        forecast_date = datetime(2026, 3, 16, tzinfo=timezone.utc)
+        forecast_date = datetime(2026, 3, 16, tzinfo=UTC)
         data: dict[str, Any] = {"properties": {"updateTime": "2026-03-16T14:30:00+00:00", "periods": periods}}
 
         respx.get(_NWS_FORECAST_URL).mock(
@@ -324,7 +323,7 @@ class TestVisualCrossingClient:
 
     @pytest.fixture()
     def forecast_date(self) -> datetime:
-        return datetime(2026, 3, 16, tzinfo=timezone.utc)
+        return datetime(2026, 3, 16, tzinfo=UTC)
 
     @pytest.fixture()
     def expected_url(self, forecast_date: datetime) -> str:
@@ -350,7 +349,7 @@ class TestVisualCrossingClient:
         assert result.temp_low == 54.8
         assert result.raw_response == fixture
         # VC has no model issuance time — issued_at should be ~now
-        assert result.issued_at >= datetime.now(timezone.utc) - timedelta(seconds=60)
+        assert result.issued_at >= datetime.now(UTC) - timedelta(seconds=60)
 
     @respx.mock
     def test_missing_days_raises(self, client: VisualCrossingClient, forecast_date: datetime, expected_url: str, expected_params: dict[str, str]) -> None:
@@ -416,7 +415,7 @@ class TestPirateWeatherClient:
     @pytest.fixture()
     def forecast_date(self) -> datetime:
         # 1742108400 = 2025-03-16T05:00:00Z
-        return datetime(2025, 3, 16, tzinfo=timezone.utc)
+        return datetime(2025, 3, 16, tzinfo=UTC)
 
     @respx.mock
     def test_happy_path_full_assertions(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
@@ -461,7 +460,7 @@ class TestPirateWeatherClient:
 
         result = client.fetch_forecast("NYC", 40.7, -74.0, forecast_date)
         # Fallback to ~now when currently block is missing
-        assert result.issued_at >= datetime.now(timezone.utc) - timedelta(seconds=60)
+        assert result.issued_at >= datetime.now(UTC) - timedelta(seconds=60)
 
     @respx.mock
     def test_missing_daily_data_raises(self, client: PirateWeatherClient, forecast_date: datetime) -> None:
@@ -489,7 +488,7 @@ class TestPirateWeatherClient:
             return_value=httpx.Response(200, json=fixture)
         )
 
-        far_future = datetime(2027, 1, 1, tzinfo=timezone.utc)
+        far_future = datetime(2027, 1, 1, tzinfo=UTC)
         with pytest.raises(WeatherApiError, match="default window covers"):
             client.fetch_forecast("NYC", 40.7, -74.0, far_future)
 
@@ -529,7 +528,7 @@ class TestOpenWeatherMapClient:
 
     @pytest.fixture()
     def forecast_date(self) -> datetime:
-        return datetime(2026, 3, 16, tzinfo=timezone.utc)
+        return datetime(2026, 3, 16, tzinfo=UTC)
 
     @respx.mock
     def test_happy_path_full_assertions(self, client: OpenWeatherMapClient, forecast_date: datetime) -> None:
@@ -548,7 +547,7 @@ class TestOpenWeatherMapClient:
         assert result.temp_high == 72.8
         assert result.temp_low == 57.8
         # OWM has no model issuance time — issued_at should be ~now
-        assert result.issued_at >= datetime.now(timezone.utc) - timedelta(seconds=60)
+        assert result.issued_at >= datetime.now(UTC) - timedelta(seconds=60)
 
     @respx.mock
     def test_raw_response_trimmed_to_target_date(self, client: OpenWeatherMapClient, forecast_date: datetime) -> None:
@@ -592,7 +591,7 @@ class TestOpenWeatherMapClient:
             return_value=httpx.Response(200, json=fixture)
         )
 
-        far_future = datetime(2027, 1, 1, tzinfo=timezone.utc)
+        far_future = datetime(2027, 1, 1, tzinfo=UTC)
         with pytest.raises(ValidationError, match="neither temp_high nor temp_low"):
             client.fetch_forecast("NYC", 40.7, -74.0, far_future)
 
@@ -686,7 +685,7 @@ class TestOpenWeatherMapClient:
         to 2026-03-17 00:00 UTC. Without timezone-aware filtering, that
         interval would be excluded, missing the afternoon high.
         """
-        forecast_date = datetime(2026, 3, 16, tzinfo=timezone.utc)
+        forecast_date = datetime(2026, 3, 16, tzinfo=UTC)
         data: dict[str, Any] = {
             "list": [
                 # 2026-03-16 18:00 UTC = 2026-03-16 11:00 PDT (local Mar 16)

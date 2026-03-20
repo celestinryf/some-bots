@@ -17,12 +17,15 @@ Scenarios:
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from src.config import PredictionConfig
+from src.engine.prediction import run_prediction_cycle
+from src.engine.recommendation import run_recommendation_cycle
 
 from shared.db.enums import MarketStatus, MarketType
 from shared.db.models import (
@@ -35,14 +38,10 @@ from shared.db.models import (
     WeatherForecast,
 )
 
-from src.config import PredictionConfig
-from src.engine.prediction import run_prediction_cycle
-from src.engine.recommendation import run_recommendation_cycle
-
 pytestmark = pytest.mark.integration
 
-_FORECAST_DATE = datetime(2026, 3, 25, tzinfo=timezone.utc)
-_NOW = datetime(2026, 3, 24, 18, 0, tzinfo=timezone.utc)
+_FORECAST_DATE = datetime(2026, 3, 25, tzinfo=UTC)
+_NOW = datetime(2026, 3, 24, 18, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +81,7 @@ def _seed_forecast(
         source=source,
         city_id=city.id,
         forecast_date=forecast_date,
-        issued_at=datetime(2026, 3, 24, 12, 0, tzinfo=timezone.utc),
+        issued_at=datetime(2026, 3, 24, 12, 0, tzinfo=UTC),
         temp_high=temp_high,
         temp_low=temp_low,
     )
@@ -129,7 +128,7 @@ def _seed_snapshot(
 ) -> KalshiMarketSnapshot:
     snapshot = KalshiMarketSnapshot(
         market_id=market.id,
-        timestamp=datetime(2026, 3, 24, 17, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 3, 24, 17, 0, tzinfo=UTC),
         yes_bid=yes_ask - Decimal("0.02"),
         yes_ask=yes_ask,
         no_bid=no_ask - Decimal("0.02"),

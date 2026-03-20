@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
-from datetime import UTC, datetime
 
 from sqlalchemy.exc import IntegrityError
 
@@ -51,7 +51,7 @@ class _FakeResult:
     def __init__(self, rows: list[object]) -> None:
         self._rows = rows
 
-    def scalars(self) -> "_FakeResult":
+    def scalars(self) -> _FakeResult:
         return self
 
     def all(self) -> list[object]:
@@ -60,6 +60,7 @@ class _FakeResult:
 
 def test_get_or_create_prediction_recovers_from_unique_race() -> None:
     from src.data.queries import get_or_create_prediction
+
     from shared.db.enums import MarketType
 
     existing_prediction = SimpleNamespace(id="prediction-1")

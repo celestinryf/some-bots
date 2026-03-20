@@ -9,22 +9,20 @@ from __future__ import annotations
 
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
-
-import pytest
-
-from shared.config.errors import PredictionError
-from shared.db.enums import MarketType
 
 from src.config import PredictionConfig
 from src.engine.prediction import run_prediction_cycle
 from src.engine.types import PredictionGroup
 from tests.factories import make_market, make_prediction
 
+from shared.config.errors import PredictionError
+from shared.db.enums import MarketType
+
 _CITY = uuid.UUID("00000000-0000-0000-0000-000000000001")
-_DATE = datetime(2026, 3, 20, tzinfo=timezone.utc)
+_DATE = datetime(2026, 3, 20, tzinfo=UTC)
 
 
 def _config(**overrides: object) -> PredictionConfig:

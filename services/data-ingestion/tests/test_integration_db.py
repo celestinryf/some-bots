@@ -8,7 +8,7 @@ rollback-per-test transaction.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -53,7 +53,7 @@ def _seed_market(
         market_id=ticker,
         ticker=ticker,
         city_id=city.id,
-        forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+        forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
         market_type=MarketType.HIGH,
         bracket_low=72.0,
         bracket_high=73.0,
@@ -78,8 +78,8 @@ class TestWeatherForecastDedup:
         values = {
             "source": "NWS",
             "city_id": city.id,
-            "forecast_date": datetime(2026, 3, 17, tzinfo=timezone.utc),
-            "issued_at": datetime(2026, 3, 16, 14, 0, tzinfo=timezone.utc),
+            "forecast_date": datetime(2026, 3, 17, tzinfo=UTC),
+            "issued_at": datetime(2026, 3, 16, 14, 0, tzinfo=UTC),
             "temp_high": 72.0,
             "temp_low": 55.0,
         }
@@ -113,20 +113,20 @@ class TestWeatherForecastDedup:
         base = {
             "source": "NWS",
             "city_id": city.id,
-            "forecast_date": datetime(2026, 3, 17, tzinfo=timezone.utc),
+            "forecast_date": datetime(2026, 3, 17, tzinfo=UTC),
             "temp_high": 72.0,
             "temp_low": 55.0,
         }
 
         stmt1 = pg_insert(WeatherForecast).values(
             **base,
-            issued_at=datetime(2026, 3, 16, 14, 0, tzinfo=timezone.utc),
+            issued_at=datetime(2026, 3, 16, 14, 0, tzinfo=UTC),
         ).on_conflict_do_nothing(constraint="uq_forecast_dedup")
         db_session.execute(stmt1)
 
         stmt2 = pg_insert(WeatherForecast).values(
             **base,
-            issued_at=datetime(2026, 3, 16, 16, 0, tzinfo=timezone.utc),
+            issued_at=datetime(2026, 3, 16, 16, 0, tzinfo=UTC),
         ).on_conflict_do_nothing(constraint="uq_forecast_dedup")
         db_session.execute(stmt2)
         db_session.flush()
@@ -153,7 +153,7 @@ class TestKalshiMarketUpsert:
             "market_id": ticker,
             "ticker": ticker,
             "city_id": city.id,
-            "forecast_date": datetime(2026, 3, 17, tzinfo=timezone.utc),
+            "forecast_date": datetime(2026, 3, 17, tzinfo=UTC),
             "market_type": MarketType.HIGH,
             "bracket_low": 72.0,
             "bracket_high": 73.0,
@@ -202,7 +202,7 @@ class TestKalshiSnapshotFK:
 
         snapshot = KalshiMarketSnapshot(
             market_id=market.id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             yes_bid=Decimal("0.54"),
             yes_ask=Decimal("0.56"),
             no_bid=Decimal("0.44"),
@@ -222,7 +222,7 @@ class TestKalshiSnapshotFK:
         """FK constraint: snapshot for nonexistent market_id raises."""
         snapshot = KalshiMarketSnapshot(
             market_id=uuid.uuid4(),  # Doesn't exist
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             yes_bid=Decimal("0.50"),
         )
         db_session.add(snapshot)

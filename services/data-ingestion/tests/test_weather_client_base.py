@@ -7,19 +7,17 @@ helper methods, and pool limits.
 """
 
 from collections.abc import Generator
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
 import pytest
 import respx
-
-from shared.config.errors import WeatherApiError
-from shared.db.enums import WeatherSource
-
 from src.clients.base import WeatherClient
 from src.clients.models import ForecastResult, ParsedForecast
 
+from shared.config.errors import WeatherApiError
+from shared.db.enums import WeatherSource
 
 # ---------------------------------------------------------------------------
 # Stub subclass for testing the ABC
@@ -44,7 +42,7 @@ class _StubWeatherClient(WeatherClient):
         return ParsedForecast(
             temp_high=data.get("high"),
             temp_low=data.get("low"),
-            issued_at=datetime.now(timezone.utc),
+            issued_at=datetime.now(UTC),
         )
 
 
@@ -90,7 +88,7 @@ def client(sleep_calls: list[float]) -> Generator[_StubWeatherClient, None, None
 
 @pytest.fixture()
 def forecast_date() -> datetime:
-    return datetime(2026, 3, 16, tzinfo=timezone.utc)
+    return datetime(2026, 3, 16, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -441,7 +439,7 @@ class TestHelperMethods:
     """Base class static helpers."""
 
     def test_extract_date_from_datetime(self) -> None:
-        dt = datetime(2026, 3, 16, 14, 30, tzinfo=timezone.utc)
+        dt = datetime(2026, 3, 16, 14, 30, tzinfo=UTC)
         assert WeatherClient._extract_date(dt) == date(2026, 3, 16)  # pyright: ignore[reportPrivateUsage]
 
     def test_extract_date_from_date(self) -> None:

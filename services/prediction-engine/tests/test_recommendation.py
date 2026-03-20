@@ -9,15 +9,11 @@ from __future__ import annotations
 
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from shared.config.errors import RecommendationError
-from shared.db.enums import Direction, MarketStatus, MarketType
-
 from src.config import PredictionConfig
 from src.engine.decimal_utils import decimal_from_json
 from src.engine.recommendation import (
@@ -35,9 +31,12 @@ from tests.factories import (
     make_snapshot,
 )
 
+from shared.config.errors import RecommendationError
+from shared.db.enums import Direction, MarketStatus, MarketType
+
 _CITY = uuid.UUID("00000000-0000-0000-0000-000000000001")
-_DATE = datetime(2026, 3, 20, tzinfo=timezone.utc)
-_NOW = datetime(2026, 3, 19, 18, 0, tzinfo=timezone.utc)
+_DATE = datetime(2026, 3, 20, tzinfo=UTC)
+_NOW = datetime(2026, 3, 19, 18, 0, tzinfo=UTC)
 
 
 def _config(**overrides: object) -> PredictionConfig:
@@ -561,7 +560,7 @@ class TestRecommendationCycleErrorIsolation:
             },
         )
         # m2: good prediction
-        p2 = make_prediction(
+        make_prediction(
             city_id=_CITY,
             probability_distribution={
                 "brackets": {"[70.0000, 75.0000)": 0.65},

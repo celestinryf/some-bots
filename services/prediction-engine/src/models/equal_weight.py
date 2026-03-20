@@ -13,11 +13,11 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from shared.config.errors import PredictionError
-
 from src.config import PredictionConfig
 from src.engine.probability import compute_ensemble_mean, compute_ensemble_std
 from src.models.base import PredictionModel
+
+from shared.config.errors import PredictionError
 
 
 class EqualWeightModel(PredictionModel):

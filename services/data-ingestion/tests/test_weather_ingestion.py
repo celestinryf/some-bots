@@ -7,16 +7,15 @@ Decision #12: Failure injection — verify per-city error isolation.
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
-
-from shared.config.errors import WeatherApiError
-from shared.db.enums import WeatherSource
-from shared.db.models import City
 
 from src.clients.models import ForecastResult
 from src.ingestion.weather import run_weather_ingestion
 
+from shared.config.errors import WeatherApiError
+from shared.db.enums import WeatherSource
+from shared.db.models import City
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,8 +42,8 @@ def _make_forecast_result(
     return ForecastResult(
         source=source,
         city_code=city_code,
-        forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
-        issued_at=datetime(2026, 3, 16, 14, 0, tzinfo=timezone.utc),
+        forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
+        issued_at=datetime(2026, 3, 16, 14, 0, tzinfo=UTC),
         temp_high=72.0,
         temp_low=55.0,
         raw_response={"test": True},
@@ -108,7 +107,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={"NYC": city},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-1",
             sleep_fn=_noop_sleep,
         )
@@ -140,7 +139,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={"NYC": city_a, "CHI": city_b},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-2",
             sleep_fn=_noop_sleep,
         )
@@ -163,7 +162,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={"NYC": _make_city("NYC"), "CHI": _make_city("CHI")},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-3",
             sleep_fn=_noop_sleep,
         )
@@ -187,7 +186,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={"NYC": _make_city("NYC")},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-4",
             sleep_fn=_noop_sleep,
         )
@@ -216,7 +215,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={"NYC": _make_city("NYC"), "CHI": _make_city("CHI"), "MIA": _make_city("MIA")},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-5",
             sleep_fn=capture_sleep,
         )
@@ -244,7 +243,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={"NYC": _make_city("NYC"), "CHI": _make_city("CHI")},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-6",
             sleep_fn=lambda s: sleep_calls.append(s),
         )
@@ -267,7 +266,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={"NYC": _make_city("NYC")},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-7",
             sleep_fn=_noop_sleep,
         )
@@ -291,7 +290,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={"NYC": _make_city("NYC")},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-8",
             sleep_fn=_noop_sleep,
         )
@@ -319,7 +318,7 @@ class TestRunWeatherIngestion:
                     mock_session,
                     exit_error=RuntimeError("commit failed"),
                 ),
-                forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+                forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
                 run_id="test-run-commit-failure",
                 sleep_fn=_noop_sleep,
             )
@@ -340,7 +339,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-9",
             sleep_fn=_noop_sleep,
         )
@@ -358,8 +357,8 @@ class TestRunWeatherIngestion:
         mock_client.fetch_forecast.return_value = ForecastResult(
             source=WeatherSource.NWS,
             city_code="NYC",
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
-            issued_at=datetime(2026, 3, 16, 14, 0, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
+            issued_at=datetime(2026, 3, 16, 14, 0, tzinfo=UTC),
             temp_high=72.0,
             temp_low=None,
             raw_response={"test": True},
@@ -374,7 +373,7 @@ class TestRunWeatherIngestion:
             client=mock_client,
             city_map={"NYC": _make_city("NYC")},
             session_factory=_mock_session_factory(mock_session),
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             run_id="test-run-10",
             sleep_fn=_noop_sleep,
         )

@@ -18,16 +18,6 @@ from decimal import Decimal
 
 from sqlalchemy import select as sa_select
 from sqlalchemy.orm import Session
-
-from shared.config.errors import RecommendationError
-from shared.config.logging import get_logger
-from shared.db.enums import Direction, MarketStatus
-from shared.db.models import (
-    KalshiMarket,
-    KalshiMarketSnapshot,
-    Prediction,
-)
-
 from src.config import PredictionConfig
 from src.data.queries import (
     fetch_latest_snapshot_map,
@@ -52,6 +42,15 @@ from src.engine.risk import (
     source_agreement_score,
 )
 from src.engine.types import RecommendationCandidate
+
+from shared.config.errors import RecommendationError
+from shared.config.logging import get_logger
+from shared.db.enums import Direction, MarketStatus
+from shared.db.models import (
+    KalshiMarket,
+    KalshiMarketSnapshot,
+    Prediction,
+)
 
 logger = get_logger("recommendation-cycle")
 

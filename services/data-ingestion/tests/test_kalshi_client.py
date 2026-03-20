@@ -25,24 +25,22 @@ from pykalshi.exceptions import (
     RateLimitError,
     ResourceNotFoundError,
 )
-
-from shared.config.errors import KalshiApiError
-from shared.db.enums import MarketStatus, MarketType
-
 from src.clients.kalshi import (
     DiscoveredMarket,
     KalshiClient,
     MarketSnapshot,
     SettledMarket,
-    extract_city_code,
-    infer_market_type,
     _to_decimal,
     _to_int,
+    extract_city_code,
+    infer_market_type,
     map_kalshi_status,
     parse_bracket,
     parse_date_from_ticker,
 )
 
+from shared.config.errors import KalshiApiError
+from shared.db.enums import MarketStatus, MarketType
 
 # ---------------------------------------------------------------------------
 # Helper function tests

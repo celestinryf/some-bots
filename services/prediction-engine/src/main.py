@@ -20,6 +20,9 @@ from enum import StrEnum
 from types import FrameType
 
 from dotenv import load_dotenv
+from src.config import PredictionConfig, load_prediction_config
+from src.engine.prediction import run_prediction_cycle
+from src.engine.recommendation import run_recommendation_cycle
 
 from shared.config.errors import WeatherBotError
 from shared.config.logging import (
@@ -31,10 +34,6 @@ from shared.config.logging import (
 )
 from shared.config.settings import get_settings
 from shared.db.session import get_session
-
-from src.config import PredictionConfig, load_prediction_config
-from src.engine.prediction import run_prediction_cycle
-from src.engine.recommendation import run_recommendation_cycle
 
 logger = get_logger("prediction-engine")
 

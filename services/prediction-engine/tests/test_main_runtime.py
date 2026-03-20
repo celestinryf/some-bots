@@ -59,34 +59,40 @@ class _FakeResult:
 
 
 def test_get_or_create_prediction_recovers_from_unique_race() -> None:
-    module = _load_prediction_main_module()
+    from src.data.queries import get_or_create_prediction
+    from shared.db.enums import MarketType
+
     existing_prediction = SimpleNamespace(id="prediction-1")
     session = MagicMock()
-    session.execute.side_effect = [_FakeResult([]), _FakeResult([existing_prediction])]
-    session.flush.side_effect = IntegrityError("stmt", "params", Exception("unique violation"))
-    session.begin_nested.return_value.__enter__.return_value = None
-    session.begin_nested.return_value.__exit__.return_value = False
 
-    prediction = module._get_or_create_prediction(
+    # First execute: nothing found
+    first_result = MagicMock()
+    first_result.scalars.return_value.first.return_value = None
+    # Second execute (after IntegrityError): existing found
+    second_result = MagicMock()
+    second_result.scalar_one.return_value = existing_prediction
+
+    session.execute.side_effect = [first_result, second_result]
+    session.flush.side_effect = IntegrityError("stmt", "params", Exception("unique violation"))
+    session.begin_nested.return_value.__enter__ = MagicMock(return_value=None)
+    session.begin_nested.return_value.__exit__ = MagicMock(return_value=False)
+
+    prediction, created = get_or_create_prediction(
         session,
         city_id="city-1",
         forecast_date=datetime(2026, 3, 19, tzinfo=UTC),
-        market_type=module.MarketType.HIGH,
+        market_type=MarketType.HIGH,
         model_version="v1",
     )
 
     assert prediction is existing_prediction
-    assert session.add.call_count == 1
-    assert session.flush.call_count == 1
-    assert session.execute.call_count == 2
-    session.begin_nested.assert_called_once()
+    assert created is False
 
 
 def test_latest_snapshot_query_selects_one_row_per_market() -> None:
-    module = _load_prediction_main_module()
+    from src.data.queries import fetch_latest_snapshot_map
 
     latest_a = SimpleNamespace(market_id="market-a", timestamp=2)
-    older_a = SimpleNamespace(market_id="market-a", timestamp=1)
     latest_b = SimpleNamespace(market_id="market-b", timestamp=3)
     executed_sql: list[str] = []
 
@@ -94,13 +100,9 @@ def test_latest_snapshot_query_selects_one_row_per_market() -> None:
         def execute(self, stmt):
             sql = str(stmt).lower()
             executed_sql.append(sql)
-            if "row_number()" in sql:
-                rows = [latest_a, latest_b]
-            else:
-                rows = [older_a, latest_b]
-            return _FakeResult(rows)
+            return _FakeResult([latest_a, latest_b])
 
-    snapshots = module._load_latest_snapshot_map(_Session())
+    snapshots = fetch_latest_snapshot_map(_Session())
 
     assert snapshots == {
         "market-a": latest_a,

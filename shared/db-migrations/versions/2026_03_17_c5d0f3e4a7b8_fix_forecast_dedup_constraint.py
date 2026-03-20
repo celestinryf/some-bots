@@ -24,6 +24,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Block concurrent writes while we dedup and swap the constraint.
+    op.execute(text("LOCK TABLE weather_forecasts IN ACCESS EXCLUSIVE MODE"))
+
     # Deduplicate existing rows before tightening the constraint.
     # Keep the row with the latest issued_at per (source, city_id,
     # forecast_date) group; delete the rest.

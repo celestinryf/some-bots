@@ -16,7 +16,6 @@ Scenarios:
 
 from __future__ import annotations
 
-import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -247,18 +246,15 @@ class TestHappyPath:
         # Snapshot every bracket. Misprice the [65, 70) bracket at 0.40 —
         # model predicts ~72°F mean so probability for that bracket is low,
         # creating a gap the engine should catch.
-        target_market = None
         for m in markets:
             yes_ask = Decimal("0.15")
             if m.bracket_low == Decimal("65.0000"):
                 yes_ask = Decimal("0.40")  # mispriced
-                target_market = m
             elif m.bracket_low == Decimal("70.0000"):
                 yes_ask = Decimal("0.45")  # near the mean
             _seed_snapshot(
                 db_session, m, yes_ask=yes_ask, no_ask=Decimal("0.88")
             )
-        market = target_market
 
         config = _config()
         factory = _session_factory(db_session)

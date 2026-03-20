@@ -45,6 +45,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest
           pip install -r services/data-ingestion/requirements.txt
+          pip install -r services/prediction-engine/requirements.txt
 
       - name: Wait for PostgreSQL
         run: |
@@ -66,4 +67,6 @@ jobs:
         run: alembic upgrade head
 
       - name: Run DB integration tests
-        run: pytest services/data-ingestion/tests/test_integration_db.py -m integration -q
+        run: |
+          pytest services/data-ingestion/tests/test_integration_db.py -m integration -q
+          pytest services/prediction-engine/tests/test_integration_db.py -m integration -q

@@ -23,6 +23,8 @@ services:
       context: .
       dockerfile: services/data-ingestion/Dockerfile
     env_file: .env
+    environment:
+      DB_HOST: postgres
     networks:
       - backend
     depends_on:
@@ -45,10 +47,11 @@ services:
       dockerfile: services/data-ingestion/Dockerfile
     env_file: .env
     environment:
-      - VISUAL_CROSSING_API_KEY
-      - PIRATE_WEATHER_API_KEY
-      - OPENWEATHER_API_KEY
-      - NWS_USER_AGENT
+      DB_HOST: postgres
+      VISUAL_CROSSING_API_KEY: ${VISUAL_CROSSING_API_KEY:-}
+      PIRATE_WEATHER_API_KEY: ${PIRATE_WEATHER_API_KEY:-}
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
+      NWS_USER_AGENT: ${NWS_USER_AGENT:-}
     volumes:
       - ./secrets/kalshi_private.pem:/app/secrets/kalshi_private.pem:ro
       - nws_cache:/app/data
@@ -66,6 +69,8 @@ services:
       context: .
       dockerfile: services/prediction-engine/Dockerfile
     env_file: .env
+    environment:
+      DB_HOST: postgres
     command: ["python", "-m", "src.main", "--role", "prediction"]
     networks:
       - backend
@@ -81,6 +86,8 @@ services:
       context: .
       dockerfile: services/prediction-engine/Dockerfile
     env_file: .env
+    environment:
+      DB_HOST: postgres
     entrypoint: ["python", "-m", "src.main", "--role", "recommendation"]
     networks:
       - backend
@@ -96,6 +103,8 @@ services:
       context: .
       dockerfile: services/notification-service/Dockerfile
     env_file: .env
+    environment:
+      DB_HOST: postgres
     networks:
       - backend
     depends_on:

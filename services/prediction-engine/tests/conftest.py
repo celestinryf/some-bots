@@ -1,9 +1,14 @@
 """
 Fixtures for prediction-engine database integration tests.
 
-Requires a running PostgreSQL instance. Uses the DB from Settings (override
-with DB_* env vars). Each test runs in a rolled-back transaction so tests
-don't interfere with each other.
+Requires a running PostgreSQL instance. Reads DB_* env vars via the shared
+Settings loader (override with DB_HOST, DB_PORT, etc.). Refuses to run
+against any database not named ``kalshi_weather_test``.
+
+Schema ownership belongs to Alembic (``alembic upgrade head``). This fixture
+only ensures tables exist as a fallback and truncates data between sessions.
+Each test runs in a rolled-back transaction so tests don't interfere with
+each other.
 """
 
 import os
@@ -19,25 +24,38 @@ from shared.db.models import Base
 
 @pytest.fixture(scope="session")
 def db_engine() -> Generator[Engine, None, None]:
-    """Create a test engine once per test session. Drops/creates all tables."""
+    """Create a test engine once per test session.
+
+    Reads connection details from DB_* env vars so the fixture respects CI
+    and containerised overrides (e.g. ``DB_HOST=postgres``).
+    """
     settings = Settings(
-        db_host="localhost",
-        db_port=5432,
-        db_name="kalshi_weather_test",
-        db_user="kalshi",
+        db_host=os.environ.get("DB_HOST", "localhost"),
+        db_port=int(os.environ.get("DB_PORT", "5432")),
+        db_name=os.environ.get("DB_NAME", "kalshi_weather_test"),
+        db_user=os.environ.get("DB_USER", "kalshi"),
         db_password=os.environ.get("DB_PASSWORD", "k4lsh1_w34th3r_b0t_2026"),
     )
+    if settings.db_name != "kalshi_weather_test":
+        raise RuntimeError(
+            f"Refusing to run integration tests against non-test database "
+            f"{settings.db_name!r}"
+        )
     engine = create_engine(settings.database_url, echo=False)
 
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
 
-    Base.metadata.drop_all(engine)
+    # Ensure tables exist as a fallback (IF NOT EXISTS — safe alongside Alembic)
     Base.metadata.create_all(engine)
+
+    # Clear residual data for a clean test session
+    with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
 
     yield engine
 
-    Base.metadata.drop_all(engine)
     engine.dispose()
 
 

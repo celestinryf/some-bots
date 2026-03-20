@@ -104,7 +104,7 @@ def _seed_market(
     is_edge: bool = False,
 ) -> KalshiMarket:
     market = KalshiMarket(
-        event_id=f"KXHIGH{city.kalshi_ticker_prefix}-26MAR25",
+        event_id=f"KX{market_type.value}{city.kalshi_ticker_prefix}-26MAR25",
         market_id=ticker,
         ticker=ticker,
         city_id=city.id,
@@ -192,11 +192,28 @@ def _config(**overrides: object) -> PredictionConfig:
 
 
 def _session_factory(session: Session):
-    """Wrap an existing session in a context manager factory."""
+    """Create a fresh Session per engine cycle with savepoint isolation.
+
+    Each call yields a new Session bound to the same connection but using its
+    own SAVEPOINT, preventing ORM identity-map leakage between prediction and
+    recommendation cycles while preserving rollback-per-test isolation.
+    """
+    bind = session.get_bind()
 
     @contextmanager
     def _factory():
-        yield session
+        cycle_session = Session(
+            bind=bind,
+            join_transaction_mode="create_savepoint",
+        )
+        try:
+            yield cycle_session
+            cycle_session.commit()  # release savepoint
+        except Exception:
+            cycle_session.rollback()
+            raise
+        finally:
+            cycle_session.close()
 
     return _factory
 

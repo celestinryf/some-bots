@@ -7,17 +7,12 @@ and mock session factories (Decision #9: DI via function arguments).
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-from shared.config.errors import KalshiApiError
-from shared.db.enums import MarketStatus, MarketType
-from shared.db.models import City, KalshiMarket
-
-from src.clients.kalshi import DiscoveredMarket, KalshiClient
+from src.clients.kalshi import DiscoveredMarket, KalshiClient, SettledMarket
 from src.clients.kalshi import MarketSnapshot as ClientMarketSnapshot
-from src.clients.kalshi import SettledMarket
 from src.ingestion.kalshi import (
     run_kalshi_discovery,
     run_kalshi_settlements,
@@ -25,6 +20,9 @@ from src.ingestion.kalshi import (
     run_kalshi_snapshots,
 )
 
+from shared.config.errors import KalshiApiError
+from shared.db.enums import MarketStatus, MarketType
+from shared.db.models import City, KalshiMarket
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -227,7 +225,7 @@ def _make_mock_kalshi_market(
     m.id = uuid.uuid4()
     m.ticker = ticker
     m.status = MarketStatus.ACTIVE
-    m.forecast_date = forecast_date or datetime(2026, 3, 17, tzinfo=timezone.utc)
+    m.forecast_date = forecast_date or datetime(2026, 3, 17, tzinfo=UTC)
     m.city = _make_city("CITY")
     m.city.timezone = city_timezone
     return m
@@ -246,7 +244,7 @@ class TestRunKalshiSnapshots:
         mock_execute.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_execute
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         snapshot = ClientMarketSnapshot(
             ticker=mock_market.ticker,
             timestamp=now,
@@ -302,7 +300,7 @@ class TestRunKalshiSnapshots:
         # API returns a ticker we don't know about
         snapshot = ClientMarketSnapshot(
             ticker="UNKNOWN-TICKER",
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             yes_bid=Decimal("0.50"),
             yes_ask=Decimal("0.52"),
             no_bid=None,
@@ -353,7 +351,7 @@ class TestRunKalshiSettlements:
         mock_kalshi = MagicMock(spec=KalshiClient)
         mock_market = _make_mock_kalshi_market()
         # Set forecast_date in the past so it appears unsettled
-        mock_market.forecast_date = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        mock_market.forecast_date = datetime(2026, 3, 15, tzinfo=UTC)
 
         mock_session = MagicMock()
         mock_scalars = MagicMock()
@@ -404,9 +402,9 @@ class TestRunKalshiSettlements:
         mock_kalshi = MagicMock(spec=KalshiClient)
 
         m1 = _make_mock_kalshi_market(ticker="TICKER-1")
-        m1.forecast_date = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        m1.forecast_date = datetime(2026, 3, 15, tzinfo=UTC)
         m2 = _make_mock_kalshi_market(ticker="TICKER-2")
-        m2.forecast_date = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        m2.forecast_date = datetime(2026, 3, 15, tzinfo=UTC)
 
         mock_session = MagicMock()
         mock_scalars = MagicMock()
@@ -435,7 +433,7 @@ class TestRunKalshiSettlements:
         """CLOSED markets should be updated to CLOSED, not left as ACTIVE."""
         mock_kalshi = MagicMock(spec=KalshiClient)
         mock_market = _make_mock_kalshi_market()
-        mock_market.forecast_date = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        mock_market.forecast_date = datetime(2026, 3, 15, tzinfo=UTC)
 
         mock_session = MagicMock()
         mock_scalars = MagicMock()
@@ -467,7 +465,7 @@ class TestRunKalshiSettlements:
         mock_kalshi = MagicMock(spec=KalshiClient)
 
         mock_market = _make_mock_kalshi_market()
-        mock_market.forecast_date = datetime(2026, 3, 15, tzinfo=timezone.utc)
+        mock_market.forecast_date = datetime(2026, 3, 15, tzinfo=UTC)
 
         mock_session = MagicMock()
         mock_scalars = MagicMock()
@@ -489,7 +487,7 @@ class TestRunKalshiSettlements:
         mock_kalshi = MagicMock(spec=KalshiClient)
         mock_market = _make_mock_kalshi_market(
             ticker="KXHIGHSFO-26MAR17-T72",
-            forecast_date=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 17, tzinfo=UTC),
             city_timezone="America/Los_Angeles",
         )
 
@@ -503,7 +501,7 @@ class TestRunKalshiSettlements:
         class _FrozenDateTime(datetime):
             @classmethod
             def now(cls, tz=None):  # type: ignore[override]
-                frozen = cls(2026, 3, 17, 12, 0, tzinfo=timezone.utc)
+                frozen = cls(2026, 3, 17, 12, 0, tzinfo=UTC)
                 return frozen if tz is None else frozen.astimezone(tz)
 
         with patch("src.ingestion.kalshi.datetime", _FrozenDateTime):
@@ -519,12 +517,12 @@ class TestRunKalshiSettlements:
         mock_kalshi = MagicMock(spec=KalshiClient)
         bad_market = _make_mock_kalshi_market(
             ticker="KXHIGHBAD-26MAR17-T72",
-            forecast_date=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 15, tzinfo=UTC),
             city_timezone="Bad/Timezone",
         )
         good_market = _make_mock_kalshi_market(
             ticker="KXHIGHGOOD-26MAR17-T72",
-            forecast_date=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            forecast_date=datetime(2026, 3, 15, tzinfo=UTC),
             city_timezone="America/New_York",
         )
 
@@ -547,7 +545,7 @@ class TestRunKalshiSettlements:
         class _FrozenDateTime(datetime):
             @classmethod
             def now(cls, tz=None):  # type: ignore[override]
-                frozen = cls(2026, 3, 18, 12, 0, tzinfo=timezone.utc)
+                frozen = cls(2026, 3, 18, 12, 0, tzinfo=UTC)
                 return frozen if tz is None else frozen.astimezone(tz)
 
         with patch("src.ingestion.kalshi.logger.error") as mock_log_error:

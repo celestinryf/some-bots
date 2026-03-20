@@ -6,7 +6,7 @@ on the free 5-day endpoint). No daily summary — must aggregate 3-hour
 intervals into daily high/low.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -79,7 +79,7 @@ class OpenWeatherMapClient(WeatherClient):
             )
 
         target_date = self._extract_date(forecast_date)
-        tz = ZoneInfo(city_timezone) if city_timezone else timezone.utc
+        tz = ZoneInfo(city_timezone) if city_timezone else UTC
 
         # Filter to target local date and collect temps
         highs: list[float] = []
@@ -90,7 +90,7 @@ class OpenWeatherMapClient(WeatherClient):
             dt_txt = interval.get("dt_txt", "")
             try:
                 # OWM dt_txt is UTC; convert to city local time for date comparison
-                utc_dt = datetime.strptime(dt_txt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                utc_dt = datetime.strptime(dt_txt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
                 local_date = utc_dt.astimezone(tz).date()
             except ValueError:
                 continue
@@ -120,6 +120,6 @@ class OpenWeatherMapClient(WeatherClient):
             temp_low=temp_low,
             # OWM does not expose a model-run timestamp; use fetch time as
             # a best-effort proxy.  NWS and PirateWeather provide real issuance times.
-            issued_at=datetime.now(timezone.utc),
+            issued_at=datetime.now(UTC),
             raw_response=trimmed_response,
         )

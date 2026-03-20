@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from shared.config.errors import PredictionError
-
 from src.config import PredictionConfig
 from src.models.base import PredictionModel
+
+from shared.config.errors import PredictionError
 
 
 class PerformanceWeightedModel(PredictionModel):

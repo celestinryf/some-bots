@@ -78,7 +78,7 @@ def _add_timestamp(
 ) -> dict[str, Any]:
     """Add ISO-8601 timestamp if not already present."""
     if "timestamp" not in event_dict:
-        event_dict["timestamp"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        event_dict["timestamp"] = datetime.datetime.now(datetime.UTC).isoformat()
     return event_dict
 
 

@@ -13,13 +13,13 @@ Subclasses implement: _build_url(), _get_headers(), _parse_response().
 _parse_response returns ParsedForecast; the base class constructs ForecastResult.
 """
 
+import math
 import random
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import date, datetime
 from email.utils import parsedate_to_datetime
-import math
 from typing import Any
 
 import httpx

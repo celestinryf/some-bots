@@ -14,11 +14,6 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 
 from sqlalchemy.orm import Session
-
-from shared.config.errors import PredictionError
-from shared.config.logging import get_logger
-from shared.db.models import KalshiMarket
-
 from src.config import PredictionConfig
 from src.data.queries import (
     fetch_active_market_groups,
@@ -30,6 +25,10 @@ from src.engine.decimal_utils import decimal_from_json, quantize_cents
 from src.engine.probability import BracketDef, build_probability_distribution
 from src.models.base import PredictionModel
 from src.models.selector import select_model
+
+from shared.config.errors import PredictionError
+from shared.config.logging import get_logger
+from shared.db.models import KalshiMarket
 
 logger = get_logger("prediction-cycle")
 

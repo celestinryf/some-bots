@@ -1,14 +1,13 @@
 """Tests for ForecastResult frozen dataclass validation."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from src.clients.models import MAX_TEMP_F, MIN_TEMP_F, ForecastResult
 
 from shared.config.errors import ValidationError
 from shared.db.enums import WeatherSource
-
-from src.clients.models import ForecastResult, MAX_TEMP_F, MIN_TEMP_F
 
 
 def _make_result(**overrides: Any) -> ForecastResult:
@@ -16,8 +15,8 @@ def _make_result(**overrides: Any) -> ForecastResult:
     defaults: dict[str, Any] = {
         "source": WeatherSource.NWS,
         "city_code": "NYC",
-        "forecast_date": datetime(2026, 3, 16, tzinfo=timezone.utc),
-        "issued_at": datetime(2026, 3, 16, 14, 30, tzinfo=timezone.utc),
+        "forecast_date": datetime(2026, 3, 16, tzinfo=UTC),
+        "issued_at": datetime(2026, 3, 16, 14, 30, tzinfo=UTC),
         "temp_high": 72.0,
         "temp_low": 55.0,
         "raw_response": {"test": True},

@@ -10,19 +10,35 @@ Revises: b4c9e2d3f5a6
 Create Date: 2026-03-17 00:02:00.000000+00:00
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
-
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = 'c5d0f3e4a7b8'
-down_revision: Union[str, None] = 'b4c9e2d3f5a6'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'b4c9e2d3f5a6'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Block concurrent writes while we dedup and swap the constraint.
+    op.execute(text("LOCK TABLE weather_forecasts IN ACCESS EXCLUSIVE MODE"))
+
+    # Deduplicate existing rows before tightening the constraint.
+    # Keep the row with the latest issued_at per (source, city_id,
+    # forecast_date) group; delete the rest.
+    op.execute(text("""
+        DELETE FROM weather_forecasts
+        WHERE id NOT IN (
+            SELECT DISTINCT ON (source, city_id, forecast_date) id
+            FROM weather_forecasts
+            ORDER BY source, city_id, forecast_date,
+                     issued_at DESC, created_at DESC
+        )
+    """))
+
     # Drop old constraint and index that included issued_at
     op.drop_constraint('uq_forecast_dedup', 'weather_forecasts', type_='unique')
     op.drop_index('ix_forecasts_city_date_source', table_name='weather_forecasts')

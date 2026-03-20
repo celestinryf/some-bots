@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import FrameType
 from zoneinfo import ZoneInfo
@@ -24,14 +24,6 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from dotenv import load_dotenv
 from sqlalchemy import select
-
-from shared.config.logging import generate_correlation_id, get_logger, setup_logging
-from shared.config.settings import get_settings
-from shared.db.enums import WeatherSource
-from shared.db.models import City
-from shared.db.seed import seed_cities
-from shared.db.session import get_session
-
 from src.clients.base import WeatherClient
 from src.clients.kalshi import KalshiClient
 from src.ingestion.factories import close_clients, create_kalshi_client, create_weather_clients
@@ -42,6 +34,13 @@ from src.ingestion.kalshi import (
     run_kalshi_snapshots,
 )
 from src.ingestion.weather import run_weather_ingestion
+
+from shared.config.logging import generate_correlation_id, get_logger, setup_logging
+from shared.config.settings import get_settings
+from shared.db.enums import WeatherSource
+from shared.db.models import City
+from shared.db.seed import seed_cities
+from shared.db.session import get_session
 
 logger = get_logger("data-ingestion")
 
@@ -69,7 +68,7 @@ def load_city_map() -> dict[str, City]:
 
 def get_forecast_date() -> datetime:
     """Return tomorrow's date at midnight UTC as the forecast target."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     tomorrow = (now + timedelta(days=1)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
@@ -81,7 +80,7 @@ def _utc_now() -> datetime:
 
     Split out for deterministic tests around UTC/local day boundaries.
     """
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _get_city_local_tomorrow(city: City, *, now_utc: datetime | None = None) -> date:
@@ -102,7 +101,7 @@ def _get_city_forecast_datetime(
         target_date.year,
         target_date.month,
         target_date.day,
-        tzinfo=timezone.utc,
+        tzinfo=UTC,
     )
 
 
@@ -486,7 +485,7 @@ def _run_scheduled(
         return
 
     scheduler = BackgroundScheduler(timezone="UTC")  # type: ignore[reportUnknownMemberType]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Cycle ID generators — jobs on the same interval share a run_id so
     # log lines from the same scheduling cycle can be correlated.

@@ -12,7 +12,6 @@ All functions are pure — no DB access, no state, no side effects.
 
 from decimal import ROUND_CEILING, Decimal
 
-
 # Kalshi taker fee rate (7% of notional risk)
 _FEE_RATE = Decimal("0.07")
 _ONE_CENT = Decimal("0.01")

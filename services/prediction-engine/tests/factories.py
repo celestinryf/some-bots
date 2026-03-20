@@ -12,7 +12,7 @@ Usage:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -27,7 +27,7 @@ from shared.db.models import (
 )
 
 _DEFAULT_CITY_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
-_DEFAULT_FORECAST_DATE = datetime(2026, 3, 20, tzinfo=timezone.utc)
+_DEFAULT_FORECAST_DATE = datetime(2026, 3, 20, tzinfo=UTC)
 
 
 def make_forecast(
@@ -44,11 +44,11 @@ def make_forecast(
     f.city_id = city_id or _DEFAULT_CITY_ID
     f.source = source
     f.forecast_date = forecast_date or _DEFAULT_FORECAST_DATE
-    f.issued_at = issued_at or datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc)
+    f.issued_at = issued_at or datetime(2026, 3, 19, 12, 0, tzinfo=UTC)
     f.temp_high = temp_high
     f.temp_low = temp_low
-    f.created_at = datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc)
-    f.updated_at = datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc)
+    f.created_at = datetime(2026, 3, 19, 12, 0, tzinfo=UTC)
+    f.updated_at = datetime(2026, 3, 19, 12, 0, tzinfo=UTC)
     return f
 
 
@@ -97,8 +97,8 @@ def make_snapshot(
     s.no_ask = no_ask
     s.volume = volume
     s.open_interest = open_interest
-    s.timestamp = timestamp or datetime(2026, 3, 20, 10, 0, tzinfo=timezone.utc)
-    s.created_at = datetime(2026, 3, 20, 10, 0, tzinfo=timezone.utc)
+    s.timestamp = timestamp or datetime(2026, 3, 20, 10, 0, tzinfo=UTC)
+    s.created_at = datetime(2026, 3, 20, 10, 0, tzinfo=UTC)
     return s
 
 

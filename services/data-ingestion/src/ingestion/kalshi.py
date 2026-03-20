@@ -9,18 +9,17 @@ Three jobs running on different schedules:
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
+from src.clients.kalshi import KalshiClient
 
 from shared.config.logging import generate_correlation_id, get_logger
 from shared.db.enums import MarketStatus
 from shared.db.models import City, KalshiMarket, KalshiMarketSnapshot
-
-from src.clients.kalshi import KalshiClient
 
 logger = get_logger("kalshi-ingestion")
 
@@ -109,7 +108,7 @@ def run_kalshi_discovery(
                         market.forecast_date.year,
                         market.forecast_date.month,
                         market.forecast_date.day,
-                        tzinfo=timezone.utc,
+                        tzinfo=UTC,
                     )
 
                     # SAVEPOINT per market so a single failure doesn't poison
@@ -136,7 +135,7 @@ def run_kalshi_discovery(
                                 "bracket_high": market.bracket_high,
                                 "is_edge_bracket": market.is_edge_bracket,
                                 # Core INSERT bypasses ORM onupdate, so set explicitly
-                                "updated_at": datetime.now(timezone.utc),
+                                "updated_at": datetime.now(UTC),
                             },
                         )
                         session.execute(stmt)
@@ -211,7 +210,7 @@ def run_kalshi_snapshots(
     correlation_id = generate_correlation_id()
 
     # Build the 24-48h window
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     window_end = window_start + timedelta(days=2)
 
@@ -380,7 +379,7 @@ def run_kalshi_settlements(
         run_id: Shared ID for the entire ingestion cycle.
     """
     correlation_id = generate_correlation_id()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Only begin settlement checks after the forecast day has passed in the
     # market city's local timezone; UTC midnight is too early for western cities.
@@ -478,7 +477,7 @@ def run_kalshi_settlements(
                                 status=settled.final_status,
                                 settlement_value=settled.settlement_value,
                                 # Core UPDATE bypasses ORM onupdate, so set explicitly
-                                updated_at=datetime.now(timezone.utc),
+                                updated_at=datetime.now(UTC),
                             )
                         )
                         # Eagerly purge snapshots for settled markets so they don't
@@ -560,7 +559,7 @@ def run_kalshi_snapshot_cleanup(
         )
         return
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
 
     logger.info(
         "kalshi_snapshot_cleanup_start",

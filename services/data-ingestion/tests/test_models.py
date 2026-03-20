@@ -9,7 +9,7 @@ constraints, relationships, enums, JSONB, Numeric precision, and indexes.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -70,7 +70,7 @@ def _make_market(session: Session, city: City, *, ticker: str | None = None, for
         market_id="mkt_001",
         ticker=ticker or f"KXHIGH{city.kalshi_ticker_prefix}-{uuid.uuid4().hex[:6]}",
         city_id=city.id,
-        forecast_date=forecast_date or datetime.now(timezone.utc),
+        forecast_date=forecast_date or datetime.now(UTC),
         market_type=MarketType.HIGH,
     )
     session.add(market)
@@ -81,7 +81,7 @@ def _make_market(session: Session, city: City, *, ticker: str | None = None, for
 def _make_prediction(session: Session, city: City) -> Prediction:
     pred = Prediction(
         city_id=city.id,
-        forecast_date=datetime.now(timezone.utc),
+        forecast_date=datetime.now(UTC),
         market_type=MarketType.HIGH,
         model_version="tier1_v1",
         predicted_temp=72.5,
@@ -172,7 +172,7 @@ class TestCity:
 class TestWeatherForecast:
     def test_insert_with_all_fields(self, db_session: Session) -> None:
         city = _make_city(db_session)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         forecast = WeatherForecast(
             source="nws",
             city_id=city.id,
@@ -193,7 +193,7 @@ class TestWeatherForecast:
 
     def test_created_at_default(self, db_session: Session) -> None:
         city = _make_city(db_session)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         forecast = WeatherForecast(
             source="visual_crossing", city_id=city.id,
             forecast_date=now, issued_at=now,
@@ -201,11 +201,12 @@ class TestWeatherForecast:
         db_session.add(forecast)
         db_session.flush()
         assert forecast.created_at is not None
-        assert (datetime.now(timezone.utc) - forecast.created_at.replace(tzinfo=timezone.utc)).total_seconds() < 5
+        assert forecast.created_at.tzinfo is not None
+        assert (datetime.now(UTC) - forecast.created_at).total_seconds() < 5
 
     def test_nullable_temps(self, db_session: Session) -> None:
         city = _make_city(db_session)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         forecast = WeatherForecast(
             source="pirate_weather", city_id=city.id,
             forecast_date=now, issued_at=now,
@@ -220,8 +221,8 @@ class TestWeatherForecast:
         fake_id = uuid.uuid4()
         forecast = WeatherForecast(
             source="nws", city_id=fake_id,
-            forecast_date=datetime.now(timezone.utc),
-            issued_at=datetime.now(timezone.utc),
+            forecast_date=datetime.now(UTC),
+            issued_at=datetime.now(UTC),
         )
         db_session.add(forecast)
         with pytest.raises(IntegrityError):
@@ -229,7 +230,7 @@ class TestWeatherForecast:
 
     def test_relationship_to_city(self, db_session: Session) -> None:
         city = _make_city(db_session)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         forecast = WeatherForecast(
             source="nws", city_id=city.id,
             forecast_date=now, issued_at=now, temp_high=75.0,
@@ -266,7 +267,7 @@ class TestKalshiMarket:
             event_id="evt_002", market_id="mkt_002",
             ticker="KXLOWTST-edge",
             city_id=city.id,
-            forecast_date=datetime.now(timezone.utc),
+            forecast_date=datetime.now(UTC),
             market_type=MarketType.LOW,
             bracket_low=None, bracket_high=Decimal("60"),
             is_edge_bracket=True,
@@ -289,7 +290,7 @@ class TestKalshiMarket:
         market = _make_market(db_session, city)
         snap = KalshiMarketSnapshot(
             market_id=market.id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             yes_bid=Decimal("0.50"), yes_ask=Decimal("0.54"),
         )
         db_session.add(snap)
@@ -308,7 +309,7 @@ class TestKalshiMarketSnapshot:
         market = _make_market(db_session, city)
         snap = KalshiMarketSnapshot(
             market_id=market.id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             yes_bid=Decimal("0.50"), yes_ask=Decimal("0.54"),
             no_bid=None, no_ask=None,
             volume=None, open_interest=None,
@@ -322,7 +323,7 @@ class TestKalshiMarketSnapshot:
         market = _make_market(db_session, city)
         snap = KalshiMarketSnapshot(
             market_id=market.id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             yes_bid=Decimal("0.50"),
         )
         db_session.add(snap)
@@ -335,7 +336,7 @@ class TestKalshiMarketSnapshot:
         market = _make_market(db_session, city)
         snap = KalshiMarketSnapshot(
             market_id=market.id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             yes_bid=Decimal("0.5432"),
             yes_ask=Decimal("0.5567"),
         )
@@ -350,7 +351,7 @@ class TestKalshiMarketSnapshot:
     def test_fk_market(self, db_session: Session) -> None:
         snap = KalshiMarketSnapshot(
             market_id=uuid.uuid4(),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
         db_session.add(snap)
         with pytest.raises(IntegrityError):
@@ -435,7 +436,7 @@ class TestPaperTradeFixed:
         trade = PaperTradeFixed(
             recommendation_id=rec.id,
             entry_price=Decimal("0.5400"),
-            settled_at=datetime.now(timezone.utc),
+            settled_at=datetime.now(UTC),
             settlement_outcome=SettlementOutcome.WIN,
             pnl=Decimal("0.4600"),
         )
@@ -615,7 +616,7 @@ class TestRefreshToken:
         token = RefreshToken(
             user_id=user.id,
             token_hash="sha256_abcdef1234567890",
-            expires_at=datetime.now(timezone.utc) + timedelta(days=14),
+            expires_at=datetime.now(UTC) + timedelta(days=14),
         )
         db_session.add(token)
         db_session.flush()
@@ -625,13 +626,13 @@ class TestRefreshToken:
         user = _make_user(db_session)
         t1 = RefreshToken(
             user_id=user.id, token_hash="same_hash",
-            expires_at=datetime.now(timezone.utc) + timedelta(days=14),
+            expires_at=datetime.now(UTC) + timedelta(days=14),
         )
         db_session.add(t1)
         db_session.flush()
         t2 = RefreshToken(
             user_id=user.id, token_hash="same_hash",
-            expires_at=datetime.now(timezone.utc) + timedelta(days=14),
+            expires_at=datetime.now(UTC) + timedelta(days=14),
         )
         db_session.add(t2)
         with pytest.raises(IntegrityError):
@@ -641,11 +642,11 @@ class TestRefreshToken:
         user = _make_user(db_session)
         token = RefreshToken(
             user_id=user.id, token_hash="revoke_me",
-            expires_at=datetime.now(timezone.utc) + timedelta(days=14),
+            expires_at=datetime.now(UTC) + timedelta(days=14),
         )
         db_session.add(token)
         db_session.flush()
-        token.revoked_at = datetime.now(timezone.utc)
+        token.revoked_at = datetime.now(UTC)
         db_session.flush()
         assert token.revoked_at is not None
 
@@ -653,7 +654,7 @@ class TestRefreshToken:
         user = _make_user(db_session)
         t = RefreshToken(
             user_id=user.id, token_hash="token_rel_test",
-            expires_at=datetime.now(timezone.utc) + timedelta(days=14),
+            expires_at=datetime.now(UTC) + timedelta(days=14),
         )
         db_session.add(t)
         db_session.flush()
@@ -671,7 +672,7 @@ class TestEmailLog:
         log = EmailLog(
             user_id=user.id,
             email_type="daily_digest",
-            sent_at=datetime.now(timezone.utc),
+            sent_at=datetime.now(UTC),
         )
         db_session.add(log)
         db_session.flush()
@@ -683,7 +684,7 @@ class TestEmailLog:
 
         # Need a second recommendation with a different prediction + market
         pred2 = Prediction(
-            city_id=city.id, forecast_date=datetime.now(timezone.utc),
+            city_id=city.id, forecast_date=datetime.now(UTC),
             market_type=MarketType.LOW, model_version="tier1_v1",
             predicted_temp=58.0, std_dev=2.0,
         )
@@ -703,7 +704,7 @@ class TestEmailLog:
         user = _make_user(db_session)
         log = EmailLog(
             user_id=user.id, email_type="daily_digest",
-            sent_at=datetime.now(timezone.utc),
+            sent_at=datetime.now(UTC),
         )
         log.recommendations.append(rec1)
         log.recommendations.append(rec2)
@@ -717,7 +718,7 @@ class TestEmailLog:
         user = _make_user(db_session)
         log = EmailLog(
             user_id=user.id, email_type="weekly_report",
-            sent_at=datetime.now(timezone.utc),
+            sent_at=datetime.now(UTC),
         )
         db_session.add(log)
         db_session.flush()
@@ -737,7 +738,7 @@ class TestEnumStorage:
                 event_id=f"evt_{mt.value}", market_id=f"mkt_{mt.value}",
                 ticker=f"KX{mt.value}TST-{uuid.uuid4().hex[:6]}",
                 city_id=city.id,
-                forecast_date=datetime.now(timezone.utc),
+                forecast_date=datetime.now(UTC),
                 market_type=mt,
             )
             db_session.add(market)
@@ -761,7 +762,7 @@ class TestEnumStorage:
             trade = PaperTradeFixed(
                 recommendation_id=rec.id, entry_price=Decimal("0.50"),
                 settlement_outcome=outcome,
-                settled_at=datetime.now(timezone.utc),
+                settled_at=datetime.now(UTC),
                 pnl=Decimal("0.50") if outcome == SettlementOutcome.WIN else Decimal("-0.50"),
             )
             db_session.add(trade)

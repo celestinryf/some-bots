@@ -12,7 +12,6 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-
 from src.engine.risk import (
     bracket_edge_score,
     city_accuracy_score,
@@ -22,7 +21,6 @@ from src.engine.risk import (
     liquidity_score,
     source_agreement_score,
 )
-
 
 # ---------------------------------------------------------------------------
 # forecast_spread_score

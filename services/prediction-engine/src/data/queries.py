@@ -18,6 +18,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
+from src.engine.types import PredictionGroup
 
 from shared.config.logging import get_logger
 from shared.db.enums import Direction, MarketStatus, MarketType
@@ -29,8 +30,6 @@ from shared.db.models import (
     Recommendation,
     WeatherForecast,
 )
-
-from src.engine.types import PredictionGroup
 
 logger = get_logger("prediction-queries")
 
